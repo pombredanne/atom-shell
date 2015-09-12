@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@
 namespace atom {
 
 // static
-base::LazyInstance<ObserverList<WindowListObserver>>::Leaky
+base::LazyInstance<base::ObserverList<WindowListObserver>>::Leaky
     WindowList::observers_ = LAZY_INSTANCE_INITIALIZER;
 
 // static

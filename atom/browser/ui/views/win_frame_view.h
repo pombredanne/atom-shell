@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -15,18 +15,16 @@ class WinFrameView : public FramelessView {
   virtual ~WinFrameView();
 
   // views::NonClientFrameView:
-  virtual gfx::Rect GetWindowBoundsForClientBounds(
-      const gfx::Rect& client_bounds) const OVERRIDE;
-  virtual int NonClientHitTest(const gfx::Point& point) OVERRIDE;
+  gfx::Rect GetWindowBoundsForClientBounds(
+      const gfx::Rect& client_bounds) const override;
+  int NonClientHitTest(const gfx::Point& point) override;
 
   // views::View:
-  virtual gfx::Size GetMinimumSize() const OVERRIDE;
-  virtual gfx::Size GetMaximumSize() const OVERRIDE;
-  virtual const char* GetClassName() const OVERRIDE;
+  gfx::Size GetMinimumSize() const override;
+  gfx::Size GetMaximumSize() const override;
+  const char* GetClassName() const override;
 
  private:
-  void ClientAreaSizeToWindowSize(gfx::Size* size) const;
-
   DISALLOW_COPY_AND_ASSIGN(WinFrameView);
 };
 

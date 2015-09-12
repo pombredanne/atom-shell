@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -94,9 +94,12 @@ void SetReturnCode(int* ret_code, int result) {
 int ShowMessageBox(NativeWindow* parent_window,
                    MessageBoxType type,
                    const std::vector<std::string>& buttons,
+                   int cancel_id,
+                   int options,
                    const std::string& title,
                    const std::string& message,
-                   const std::string& detail) {
+                   const std::string& detail,
+                   const gfx::ImageSkia& icon) {
   NSAlert* alert = CreateNSAlert(
       parent_window, type, buttons, title, message, detail);
 
@@ -124,9 +127,12 @@ int ShowMessageBox(NativeWindow* parent_window,
 void ShowMessageBox(NativeWindow* parent_window,
                     MessageBoxType type,
                     const std::vector<std::string>& buttons,
+                    int cancel_id,
+                    int options,
                     const std::string& title,
                     const std::string& message,
                     const std::string& detail,
+                    const gfx::ImageSkia& icon,
                     const MessageBoxCallback& callback) {
   NSAlert* alert = CreateNSAlert(
       parent_window, type, buttons, title, message, detail);
@@ -139,6 +145,15 @@ void ShowMessageBox(NativeWindow* parent_window,
                     modalDelegate:delegate
                    didEndSelector:@selector(alertDidEnd:returnCode:contextInfo:)
                       contextInfo:nil];
+}
+
+void ShowErrorBox(const base::string16& title, const base::string16& content) {
+  NSAlert* alert = [[NSAlert alloc] init];
+  [alert setMessageText:base::SysUTF16ToNSString(title)];
+  [alert setInformativeText:base::SysUTF16ToNSString(content)];
+  [alert setAlertStyle:NSWarningAlertStyle];
+  [alert runModal];
+  [alert release];
 }
 
 }  // namespace atom

@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -14,6 +14,11 @@
 #include "ui/views/widget/widget_delegate.h"
 #include "ui/views/widget/widget_observer.h"
 
+#if defined(OS_WIN)
+#include "atom/browser/ui/win/message_handler_delegate.h"
+#include "atom/browser/ui/win/taskbar_host.h"
+#endif
+
 namespace views {
 class UnhandledKeyboardEventHandler;
 }
@@ -22,101 +27,130 @@ namespace atom {
 
 class GlobalMenuBarX11;
 class MenuBar;
+class WindowStateWatcher;
+
+#if defined(OS_WIN)
+class AtomDesktopWindowTreeHostWin;
+#endif
 
 class NativeWindowViews : public NativeWindow,
+#if defined(OS_WIN)
+                          public MessageHandlerDelegate,
+#endif
                           public views::WidgetDelegateView,
                           public views::WidgetObserver {
  public:
-  explicit NativeWindowViews(content::WebContents* web_contents,
-                            const mate::Dictionary& options);
-  virtual ~NativeWindowViews();
+  NativeWindowViews(brightray::InspectableWebContents* inspectable_web_contents,
+                    const mate::Dictionary& options);
+  ~NativeWindowViews() override;
 
   // NativeWindow:
-  virtual void Close() OVERRIDE;
-  virtual void CloseImmediately() OVERRIDE;
-  virtual void Move(const gfx::Rect& pos) OVERRIDE;
-  virtual void Focus(bool focus) OVERRIDE;
-  virtual bool IsFocused() OVERRIDE;
-  virtual void Show() OVERRIDE;
-  virtual void Hide() OVERRIDE;
-  virtual bool IsVisible() OVERRIDE;
-  virtual void Maximize() OVERRIDE;
-  virtual void Unmaximize() OVERRIDE;
-  virtual bool IsMaximized() OVERRIDE;
-  virtual void Minimize() OVERRIDE;
-  virtual void Restore() OVERRIDE;
-  virtual bool IsMinimized() OVERRIDE;
-  virtual void SetFullscreen(bool fullscreen) OVERRIDE;
-  virtual bool IsFullscreen() OVERRIDE;
-  virtual void SetSize(const gfx::Size& size) OVERRIDE;
-  virtual gfx::Size GetSize() OVERRIDE;
-  virtual void SetContentSize(const gfx::Size& size) OVERRIDE;
-  virtual gfx::Size GetContentSize() OVERRIDE;
-  virtual void SetMinimumSize(const gfx::Size& size) OVERRIDE;
-  virtual gfx::Size GetMinimumSize() OVERRIDE;
-  virtual void SetMaximumSize(const gfx::Size& size) OVERRIDE;
-  virtual gfx::Size GetMaximumSize() OVERRIDE;
-  virtual void SetResizable(bool resizable) OVERRIDE;
-  virtual bool IsResizable() OVERRIDE;
-  virtual void SetAlwaysOnTop(bool top) OVERRIDE;
-  virtual bool IsAlwaysOnTop() OVERRIDE;
-  virtual void Center() OVERRIDE;
-  virtual void SetPosition(const gfx::Point& position) OVERRIDE;
-  virtual gfx::Point GetPosition() OVERRIDE;
-  virtual void SetTitle(const std::string& title) OVERRIDE;
-  virtual std::string GetTitle() OVERRIDE;
-  virtual void FlashFrame(bool flash) OVERRIDE;
-  virtual void SetSkipTaskbar(bool skip) OVERRIDE;
-  virtual void SetKiosk(bool kiosk) OVERRIDE;
-  virtual bool IsKiosk() OVERRIDE;
-  virtual void SetMenu(ui::MenuModel* menu_model) OVERRIDE;
-  virtual gfx::NativeWindow GetNativeWindow() OVERRIDE;
-  virtual void SetProgressBar(double value) OVERRIDE;
+  void Close() override;
+  void CloseImmediately() override;
+  void Focus(bool focus) override;
+  bool IsFocused() override;
+  void Show() override;
+  void ShowInactive() override;
+  void Hide() override;
+  bool IsVisible() override;
+  void Maximize() override;
+  void Unmaximize() override;
+  bool IsMaximized() override;
+  void Minimize() override;
+  void Restore() override;
+  bool IsMinimized() override;
+  void SetFullScreen(bool fullscreen) override;
+  bool IsFullscreen() const override;
+  void SetBounds(const gfx::Rect& bounds) override;
+  gfx::Rect GetBounds() override;
+  void SetContentSize(const gfx::Size& size) override;
+  gfx::Size GetContentSize() override;
+  void SetMinimumSize(const gfx::Size& size) override;
+  gfx::Size GetMinimumSize() override;
+  void SetMaximumSize(const gfx::Size& size) override;
+  gfx::Size GetMaximumSize() override;
+  void SetResizable(bool resizable) override;
+  bool IsResizable() override;
+  void SetAlwaysOnTop(bool top) override;
+  bool IsAlwaysOnTop() override;
+  void Center() override;
+  void SetTitle(const std::string& title) override;
+  std::string GetTitle() override;
+  void FlashFrame(bool flash) override;
+  void SetSkipTaskbar(bool skip) override;
+  void SetKiosk(bool kiosk) override;
+  bool IsKiosk() override;
+  void SetMenu(ui::MenuModel* menu_model) override;
+  gfx::NativeWindow GetNativeWindow() override;
+  void SetOverlayIcon(const gfx::Image& overlay,
+                      const std::string& description) override;
+  void SetProgressBar(double value) override;
+  void SetAutoHideMenuBar(bool auto_hide) override;
+  bool IsMenuBarAutoHide() override;
+  void SetMenuBarVisibility(bool visible) override;
+  bool IsMenuBarVisible() override;
+  void SetVisibleOnAllWorkspaces(bool visible) override;
+  bool IsVisibleOnAllWorkspaces() override;
 
   gfx::AcceleratedWidget GetAcceleratedWidget();
 
-  SkRegion* draggable_region() const { return draggable_region_.get(); }
   views::Widget* widget() const { return window_.get(); }
 
- private:
-  // NativeWindow:
-  virtual void UpdateDraggableRegions(
-      const std::vector<DraggableRegion>& regions) OVERRIDE;
+#if defined(OS_WIN)
+  TaskbarHost& taskbar_host() { return taskbar_host_; }
+#endif
 
+ private:
   // views::WidgetObserver:
-  virtual void OnWidgetActivationChanged(
-      views::Widget* widget, bool active) OVERRIDE;
+  void OnWidgetActivationChanged(
+      views::Widget* widget, bool active) override;
+  void OnWidgetBoundsChanged(
+      views::Widget* widget, const gfx::Rect& bounds) override;
 
   // views::WidgetDelegate:
-  virtual void DeleteDelegate() OVERRIDE;
-  virtual views::View* GetInitiallyFocusedView() OVERRIDE;
-  virtual bool CanResize() const OVERRIDE;
-  virtual bool CanMaximize() const OVERRIDE;
-  virtual base::string16 GetWindowTitle() const OVERRIDE;
-  virtual bool ShouldHandleSystemCommands() const OVERRIDE;
-  virtual gfx::ImageSkia GetWindowAppIcon() OVERRIDE;
-  virtual gfx::ImageSkia GetWindowIcon() OVERRIDE;
-  virtual views::Widget* GetWidget() OVERRIDE;
-  virtual const views::Widget* GetWidget() const OVERRIDE;
-  virtual views::View* GetContentsView() OVERRIDE;
-  virtual bool ShouldDescendIntoChildForEventHandling(
+  void DeleteDelegate() override;
+  views::View* GetInitiallyFocusedView() override;
+  bool CanResize() const override;
+  bool CanMaximize() const override;
+  bool CanMinimize() const override;
+  base::string16 GetWindowTitle() const override;
+  bool ShouldHandleSystemCommands() const override;
+  gfx::ImageSkia GetWindowAppIcon() override;
+  gfx::ImageSkia GetWindowIcon() override;
+  views::Widget* GetWidget() override;
+  const views::Widget* GetWidget() const override;
+  views::View* GetContentsView() override;
+  bool ShouldDescendIntoChildForEventHandling(
      gfx::NativeView child,
-     const gfx::Point& location) OVERRIDE;
-  virtual views::ClientView* CreateClientView(views::Widget* widget) OVERRIDE;
-  virtual views::NonClientFrameView* CreateNonClientFrameView(
-      views::Widget* widget) OVERRIDE;
+     const gfx::Point& location) override;
+  views::ClientView* CreateClientView(views::Widget* widget) override;
+  views::NonClientFrameView* CreateNonClientFrameView(
+      views::Widget* widget) override;
+  void OnWidgetMove() override;
+#if defined(OS_WIN)
+  bool ExecuteWindowsCommand(int command_id) override;
+#endif
 
-  // brightray::InspectableWebContentsDelegate:
-  virtual gfx::ImageSkia GetDevToolsWindowIcon() OVERRIDE;
+  // brightray::InspectableWebContentsViewDelegate:
+  gfx::ImageSkia GetDevToolsWindowIcon() override;
+#if defined(USE_X11)
+  void GetDevToolsWindowWMClass(
+      std::string* name, std::string* class_name) override;
+#endif
 
-  // content::WebContentsDelegate:
-  virtual void HandleMouseDown() OVERRIDE;
-  virtual void HandleKeyboardEvent(
+#if defined(OS_WIN)
+  // MessageHandlerDelegate:
+  bool PreHandleMSG(
+      UINT message, WPARAM w_param, LPARAM l_param, LRESULT* result) override;
+#endif
+
+  // NativeWindow:
+  void HandleKeyboardEvent(
       content::WebContents*,
-      const content::NativeWebKeyboardEvent& event) OVERRIDE;
+      const content::NativeWebKeyboardEvent& event) override;
 
   // views::View:
-  virtual bool AcceleratorPressed(const ui::Accelerator& accelerator) OVERRIDE;
+  bool AcceleratorPressed(const ui::Accelerator& accelerator) override;
 
   // Register accelerators supported by the menu model.
   void RegisterAccelerators(ui::MenuModel* menu_model);
@@ -125,8 +159,8 @@ class NativeWindowViews : public NativeWindow,
   // in client area we need to substract/add menu bar's height in convertions.
   gfx::Rect ContentBoundsToWindowBounds(const gfx::Rect& content_bounds);
 
-  // Show/Hide the menu bar.
-  void SetMenuBarVisibility(bool visible);
+  // Returns the restore state for the window.
+  ui::WindowShowState GetRestoredState();
 
   scoped_ptr<views::Widget> window_;
   views::View* web_view_;  // Managed by inspectable_web_contents_.
@@ -138,6 +172,17 @@ class NativeWindowViews : public NativeWindow,
 
 #if defined(USE_X11)
   scoped_ptr<GlobalMenuBarX11> global_menu_bar_;
+
+  // Handles window state events.
+  scoped_ptr<WindowStateWatcher> window_state_watcher_;
+#elif defined(OS_WIN)
+  // Weak ref.
+  AtomDesktopWindowTreeHostWin* atom_desktop_window_tree_host_win_;
+  // Records window was whether restored from minimized state or maximized
+  // state.
+  bool is_minimized_;
+  // In charge of running taskbar related APIs.
+  TaskbarHost taskbar_host_;
 #endif
 
   // Handles unhandled keyboard messages coming back from the renderer process.
@@ -151,8 +196,7 @@ class NativeWindowViews : public NativeWindow,
   std::string title_;
   gfx::Size minimum_size_;
   gfx::Size maximum_size_;
-
-  scoped_ptr<SkRegion> draggable_region_;
+  gfx::Size widget_size_;
 
   DISALLOW_COPY_AND_ASSIGN(NativeWindowViews);
 };

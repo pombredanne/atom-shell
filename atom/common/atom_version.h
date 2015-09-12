@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 #define ATOM_VERSION_H
 
 #define ATOM_MAJOR_VERSION 0
-#define ATOM_MINOR_VERSION 18
-#define ATOM_PATCH_VERSION 1
+#define ATOM_MINOR_VERSION 32
+#define ATOM_PATCH_VERSION 2
 
 #define ATOM_VERSION_IS_RELEASE 1
 

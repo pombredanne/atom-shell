@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -9,20 +9,23 @@
 
 namespace atom {
 
+class NativeWindowViews;
+
 class MenuLayout : public views::FillLayout {
  public:
-  explicit MenuLayout(int menu_height);
+  MenuLayout(NativeWindowViews* window, int menu_height);
   virtual ~MenuLayout();
 
   // views::LayoutManager:
-  virtual void Layout(views::View* host) OVERRIDE;
-  virtual gfx::Size GetPreferredSize(const views::View* host) const OVERRIDE;
-  virtual int GetPreferredHeightForWidth(
-      const views::View* host, int width) const OVERRIDE;
+  void Layout(views::View* host) override;
+  gfx::Size GetPreferredSize(const views::View* host) const override;
+  int GetPreferredHeightForWidth(
+      const views::View* host, int width) const override;
 
  private:
   bool HasMenu(const views::View* host) const;
 
+  NativeWindowViews* window_;
   int menu_height_;
 
   DISALLOW_COPY_AND_ASSIGN(MenuLayout);

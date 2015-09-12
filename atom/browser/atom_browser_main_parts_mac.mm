@@ -1,15 +1,14 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
 #include "atom/browser/atom_browser_main_parts.h"
 
-#import "atom/browser/mac/atom_application.h"
-#import "atom/browser/mac/atom_application_delegate.h"
-#include "base/files/file_path.h"
-#import "base/mac/foundation_util.h"
+#include "atom/browser/mac/atom_application.h"
+#include "atom/browser/mac/atom_application_delegate.h"
+#include "base/mac/bundle_locations.h"
+#include "base/mac/foundation_util.h"
 #include "ui/base/l10n/l10n_util_mac.h"
-#import "vendor/brightray/common/mac/main_application_bundle.h"
 
 namespace atom {
 
@@ -20,15 +19,10 @@ void AtomBrowserMainParts::PreMainMessageLoopStart() {
   // Force the NSApplication subclass to be used.
   NSApplication* application = [AtomApplication sharedApplication];
 
-  AtomApplicationDelegate* delegate = [AtomApplicationDelegate alloc];
-  [NSApp setDelegate:delegate];
+  AtomApplicationDelegate* delegate = [[AtomApplicationDelegate alloc] init];
+  [NSApp setDelegate:(id<NSFileManagerDelegate>)delegate];
 
-  base::FilePath frameworkPath = brightray::MainApplicationBundlePath()
-      .Append("Contents")
-      .Append("Frameworks")
-      .Append("Atom Framework.framework");
-  NSBundle* frameworkBundle = [NSBundle
-       bundleWithPath:base::mac::FilePathToNSString(frameworkPath)];
+  NSBundle* frameworkBundle = base::mac::FrameworkBundle();
   NSNib* mainNib = [[NSNib alloc] initWithNibNamed:@"MainMenu"
                                             bundle:frameworkBundle];
   [mainNib instantiateWithOwner:application topLevelObjects:nil];
@@ -41,7 +35,8 @@ void AtomBrowserMainParts::PreMainMessageLoopStart() {
 }
 
 void AtomBrowserMainParts::PostDestroyThreads() {
-  [[AtomApplication sharedApplication] setDelegate:nil];
+  [[NSApp delegate] release];
+  [NSApp setDelegate:nil];
 }
 
 }  // namespace atom

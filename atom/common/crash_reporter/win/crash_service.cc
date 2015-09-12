@@ -11,8 +11,11 @@
 #include <map>
 
 #include "base/command_line.h"
-#include "base/file_util.h"
+#include "base/files/file_util.h"
 #include "base/logging.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
+#include "base/time/time.h"
 #include "base/win/windows_version.h"
 #include "vendor/breakpad/src/client/windows/crash_generation/client_info.h"
 #include "vendor/breakpad/src/client/windows/crash_generation/crash_generation_server.h"
@@ -21,6 +24,9 @@
 namespace breakpad {
 
 namespace {
+
+const wchar_t kWaitEventFormat[] = L"$1CrashServiceWaitEvent";
+const wchar_t kClassNameFormat[] = L"$1CrashServiceWindow";
 
 const wchar_t kTestPipeName[] = L"\\\\.\\pipe\\ChromeCrashServices";
 
@@ -66,6 +72,30 @@ bool WriteCustomInfoToFile(const std::wstring& dump_path, const CrashMap& map) {
   return true;
 }
 
+bool WriteReportIDToFile(const std::wstring& dump_path,
+                         const std::wstring& report_id) {
+  std::wstring file_path(dump_path);
+  size_t last_slash = file_path.rfind(L'\\');
+  if (last_slash == std::wstring::npos)
+    return false;
+  file_path.resize(last_slash);
+  file_path += L"\\uploads.log";
+
+  std::wofstream file(file_path.c_str(),
+      std::ios_base::out | std::ios_base::app | std::ios::binary);
+  if (!file.is_open())
+    return false;
+
+  int64 seconds_since_epoch =
+      (base::Time::Now() - base::Time::UnixEpoch()).InSeconds();
+  std::wstring line = base::Int64ToString16(seconds_since_epoch);
+  line += L',';
+  line += report_id;
+  line += L'\n';
+  file.write(line.c_str(), static_cast<std::streamsize>(line.length()));
+  return true;
+}
+
 // The window procedure task is to handle when a) the user logs off.
 // b) the system shuts down or c) when the user closes the window.
 LRESULT __stdcall CrashSvcWndProc(HWND hwnd, UINT message,
@@ -85,13 +115,18 @@ LRESULT __stdcall CrashSvcWndProc(HWND hwnd, UINT message,
 // This is the main and only application window.
 HWND g_top_window = NULL;
 
-bool CreateTopWindow(HINSTANCE instance, bool visible) {
+bool CreateTopWindow(HINSTANCE instance,
+                     const base::string16& application_name,
+                     bool visible) {
+  base::string16 class_name = ReplaceStringPlaceholders(
+      kClassNameFormat, application_name, NULL);
+
   WNDCLASSEXW wcx = {0};
   wcx.cbSize = sizeof(wcx);
   wcx.style = CS_HREDRAW | CS_VREDRAW;
   wcx.lpfnWndProc = CrashSvcWndProc;
   wcx.hInstance = instance;
-  wcx.lpszClassName = L"crash_svc_class";
+  wcx.lpszClassName = class_name.c_str();
   ATOM atom = ::RegisterClassExW(&wcx);
   DWORD style = visible ? WS_POPUPWINDOW | WS_VISIBLE : WS_OVERLAPPED;
 
@@ -167,7 +202,8 @@ CrashService::~CrashService() {
   delete sender_;
 }
 
-bool CrashService::Initialize(const base::FilePath& operating_dir,
+bool CrashService::Initialize(const base::string16& application_name,
+                              const base::FilePath& operating_dir,
                               const base::FilePath& dumps_path) {
   using google_breakpad::CrashReportSender;
   using google_breakpad::CrashGenerationServer;
@@ -179,7 +215,7 @@ bool CrashService::Initialize(const base::FilePath& operating_dir,
   // reports per day quota. Does not seem to serve any other purpose.
   base::FilePath checkpoint_path = operating_dir.Append(kCheckPointFile);
 
-  CommandLine& cmd_line = *CommandLine::ForCurrentProcess();
+  base::CommandLine& cmd_line = *base::CommandLine::ForCurrentProcess();
 
   base::FilePath dumps_path_to_use = dumps_path;
 
@@ -234,6 +270,7 @@ bool CrashService::Initialize(const base::FilePath& operating_dir,
   }
 
   if (!CreateTopWindow(::GetModuleHandleW(NULL),
+                       application_name,
                        !cmd_line.HasSwitch(kNoWindow))) {
     LOG(ERROR) << "could not create window";
     if (security_attributes.lpSecurityDescriptor)
@@ -272,11 +309,10 @@ bool CrashService::Initialize(const base::FilePath& operating_dir,
 
   // Create or open an event to signal the browser process that the crash
   // service is initialized.
-  HANDLE running_event =
-      ::CreateEventW(NULL, TRUE, TRUE, L"g_atom_shell_crash_service");
-  // If the browser already had the event open, the CreateEvent call did not
-  // signal it. We need to do it manually.
-  ::SetEvent(running_event);
+  base::string16 wait_name = ReplaceStringPlaceholders(
+      kWaitEventFormat, application_name, NULL);
+  HANDLE wait_event = ::CreateEventW(NULL, TRUE, FALSE, wait_name.c_str());
+  ::SetEvent(wait_event);
 
   return true;
 }
@@ -422,6 +458,7 @@ DWORD CrashService::AsyncSendDump(void* context) {
           ++info->self->requests_sent_;
           ++info->self->requests_handled_;
           retry_round = 0;
+          WriteReportIDToFile(info->dump_path, report_id);
           break;
         case google_breakpad::RESULT_THROTTLED:
           report_id = L"<throttled>";
@@ -429,7 +466,7 @@ DWORD CrashService::AsyncSendDump(void* context) {
         default:
           report_id = L"<unknown>";
           break;
-      };
+      }
     }
 
     VLOG(1) << "dump for pid =" << info->pid << " crash2 id =" << report_id;

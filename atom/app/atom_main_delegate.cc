@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 #include "atom/browser/atom_browser_client.h"
 #include "atom/common/google_api_key.h"
 #include "atom/renderer/atom_renderer_client.h"
+#include "atom/utility/atom_content_utility_client.h"
 #include "base/command_line.h"
 #include "base/debug/stack_trace.h"
 #include "base/environment.h"
@@ -27,8 +28,8 @@ AtomMainDelegate::~AtomMainDelegate() {
 
 bool AtomMainDelegate::BasicStartupComplete(int* exit_code) {
   // Disable logging out to debug.log on Windows
-#if defined(OS_WIN)
   logging::LoggingSettings settings;
+#if defined(OS_WIN)
 #if defined(DEBUG)
   settings.logging_dest = logging::LOG_TO_ALL;
   settings.log_file = L"debug.log";
@@ -36,15 +37,17 @@ bool AtomMainDelegate::BasicStartupComplete(int* exit_code) {
   settings.delete_old = logging::DELETE_OLD_LOG_FILE;
 #else
   settings.logging_dest = logging::LOG_TO_SYSTEM_DEBUG_LOG;
-#endif
+#endif  // defined(DEBUG)
+#else  // defined(OS_WIN)
+  settings.logging_dest = logging::LOG_TO_SYSTEM_DEBUG_LOG;
+#endif  // !defined(OS_WIN)
   logging::InitLogging(settings);
-#endif  // defined(OS_WIN)
 
   // Logging with pid and timestamp.
   logging::SetLogItems(true, false, true, false);
 
-  // Enable convient stack printing.
 #if defined(DEBUG) && defined(OS_LINUX)
+  // Enable convient stack printing.
   base::debug::EnableInProcessStackDumping();
 #endif
 
@@ -59,16 +62,17 @@ void AtomMainDelegate::PreSandboxStartup() {
   if (!env->HasVar("GOOGLE_API_KEY"))
     env->SetVar("GOOGLE_API_KEY", GOOGLEAPIS_API_KEY);
 
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  auto command_line = base::CommandLine::ForCurrentProcess();
   std::string process_type = command_line->GetSwitchValueASCII(
       switches::kProcessType);
+
+  if (process_type == switches::kUtilityProcess) {
+    AtomContentUtilityClient::PreSandboxStartup();
+  }
 
   // Only append arguments for browser process.
   if (!process_type.empty())
     return;
-
-  // Add a flag to mark the start of switches added by atom-shell.
-  command_line->AppendSwitch("atom-shell-switches-start");
 
 #if defined(OS_WIN)
   // Disable the LegacyRenderWidgetHostHWND, it made frameless windows unable
@@ -80,13 +84,13 @@ void AtomMainDelegate::PreSandboxStartup() {
   // Disable renderer sandbox for most of node's functions.
   command_line->AppendSwitch(switches::kNoSandbox);
 
+  // Allow file:// URIs to read other file:// URIs by default.
+  command_line->AppendSwitch(switches::kAllowFileAccessFromFiles);
+
 #if defined(OS_MACOSX)
   // Enable AVFoundation.
   command_line->AppendSwitch("enable-avfoundation");
 #endif
-
-  // Add a flag to mark the end of switches added by atom-shell.
-  command_line->AppendSwitch("atom-shell-switches-end");
 }
 
 content::ContentBrowserClient* AtomMainDelegate::CreateContentBrowserClient() {
@@ -100,6 +104,11 @@ content::ContentRendererClient*
   return renderer_client_.get();
 }
 
+content::ContentUtilityClient* AtomMainDelegate::CreateContentUtilityClient() {
+  utility_client_.reset(new AtomContentUtilityClient);
+  return utility_client_.get();
+}
+
 scoped_ptr<brightray::ContentClient> AtomMainDelegate::CreateContentClient() {
   return scoped_ptr<brightray::ContentClient>(new AtomContentClient).Pass();
 }
@@ -111,7 +120,7 @@ void AtomMainDelegate::AddDataPackFromPath(
       pak_dir.Append(FILE_PATH_LITERAL("ui_resources_200_percent.pak")),
       ui::SCALE_FACTOR_200P);
   bundle->AddDataPackFromPath(
-      pak_dir.Append(FILE_PATH_LITERAL("webkit_resources_200_percent.pak")),
+      pak_dir.Append(FILE_PATH_LITERAL("content_resources_200_percent.pak")),
       ui::SCALE_FACTOR_200P);
 #endif
 }

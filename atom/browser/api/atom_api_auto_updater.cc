@@ -1,17 +1,15 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
 #include "atom/browser/api/atom_api_auto_updater.h"
 
 #include "base/time/time.h"
-#include "base/values.h"
 #include "atom/browser/auto_updater.h"
 #include "atom/browser/browser.h"
+#include "atom/common/node_includes.h"
 #include "native_mate/dictionary.h"
 #include "native_mate/object_template_builder.h"
-
-#include "atom/common/node_includes.h"
 
 namespace atom {
 
@@ -26,9 +24,7 @@ AutoUpdater::~AutoUpdater() {
 }
 
 void AutoUpdater::OnError(const std::string& error) {
-  base::ListValue args;
-  args.AppendString(error);
-  Emit("error", args);
+  Emit("error", error);
 }
 
 void AutoUpdater::OnCheckingForUpdate() {
@@ -49,13 +45,8 @@ void AutoUpdater::OnUpdateDownloaded(const std::string& release_notes,
                                      const std::string& update_url,
                                      const base::Closure& quit_and_install) {
   quit_and_install_ = quit_and_install;
-
-  base::ListValue args;
-  args.AppendString(release_notes);
-  args.AppendString(release_name);
-  args.AppendDouble(release_date.ToJsTime());
-  args.AppendString(update_url);
-  Emit("update-downloaded-raw", args);
+  Emit("update-downloaded-raw", release_notes, release_name,
+       release_date.ToJsTime(), update_url);
 }
 
 mate::ObjectTemplateBuilder AutoUpdater::GetObjectTemplateBuilder(
@@ -85,8 +76,8 @@ mate::Handle<AutoUpdater> AutoUpdater::Create(v8::Isolate* isolate) {
 
 namespace {
 
-void Initialize(v8::Handle<v8::Object> exports, v8::Handle<v8::Value> unused,
-                v8::Handle<v8::Context> context, void* priv) {
+void Initialize(v8::Local<v8::Object> exports, v8::Local<v8::Value> unused,
+                v8::Local<v8::Context> context, void* priv) {
   v8::Isolate* isolate = context->GetIsolate();
   mate::Dictionary dict(isolate, exports);
   dict.Set("autoUpdater", atom::api::AutoUpdater::Create(isolate));

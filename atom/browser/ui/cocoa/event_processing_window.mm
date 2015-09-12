@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -58,8 +58,8 @@
   // Convert the event's location from the original window's coordinates into
   // our own.
   NSPoint eventLoc = [event locationInWindow];
-  eventLoc = [[event window] convertBaseToScreen:eventLoc];
-  eventLoc = [self convertScreenToBase:eventLoc];
+  eventLoc = [self convertRectFromScreen:
+    [[event window] convertRectToScreen:NSMakeRect(eventLoc.x, eventLoc.y, 0, 0)]].origin;
 
   // Various things *only* apply to key down/up.
   BOOL eventIsARepeat = NO;

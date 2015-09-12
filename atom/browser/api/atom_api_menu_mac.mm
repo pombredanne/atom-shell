@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -19,12 +19,16 @@ MenuMac::MenuMac() {
 }
 
 void MenuMac::Popup(Window* window) {
+  NativeWindow* native_window = window->window();
+  if (!native_window)
+    return;
+  content::WebContents* web_contents = native_window->web_contents();
+  if (!web_contents)
+    return;
+
+  NSWindow* nswindow = native_window->GetNativeWindow();
   base::scoped_nsobject<AtomMenuController> menu_controller(
       [[AtomMenuController alloc] initWithModel:model_.get()]);
-
-  NativeWindow* native_window = window->window();
-  NSWindow* nswindow = native_window->GetNativeWindow();
-  content::WebContents* web_contents = native_window->GetWebContents();
 
   // Fake out a context menu event.
   NSEvent* currentEvent = [NSApp currentEvent];
@@ -44,6 +48,25 @@ void MenuMac::Popup(Window* window) {
   [NSMenu popUpContextMenu:[menu_controller menu]
                  withEvent:clickEvent
                    forView:web_contents->GetContentNativeView()];
+}
+
+void MenuMac::PopupAt(Window* window, int x, int y) {
+  NativeWindow* native_window = window->window();
+  if (!native_window)
+    return;
+  content::WebContents* web_contents = native_window->web_contents();
+  if (!web_contents)
+    return;
+
+  base::scoped_nsobject<AtomMenuController> menu_controller(
+      [[AtomMenuController alloc] initWithModel:model_.get()]);
+  NSMenu* menu = [menu_controller menu];
+  NSView* view = web_contents->GetContentNativeView();
+
+  // Show the menu.
+  [menu popUpMenuPositioningItem:[menu itemAtIndex:0]
+                      atLocation:NSMakePoint(x, [view frame].size.height - y)
+                          inView:view];
 }
 
 // static

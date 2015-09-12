@@ -2,36 +2,52 @@
 
 import argparse
 import os
+import subprocess
 import sys
 
-from lib.config import LIBCHROMIUMCONTENT_COMMIT, BASE_URL
-from lib.util import execute, scoped_cwd, enable_verbose_execute
+from lib.config import LIBCHROMIUMCONTENT_COMMIT, BASE_URL, PLATFORM, \
+                       enable_verbose_mode, is_verbose_mode, get_target_arch
+from lib.util import execute_stdout, get_atom_shell_version, scoped_cwd
 
 
 SOURCE_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 VENDOR_DIR = os.path.join(SOURCE_ROOT, 'vendor')
 PYTHON_26_URL = 'https://chromium.googlesource.com/chromium/deps/python_26'
-NPM = 'npm.cmd' if sys.platform in ['win32', 'cygwin'] else 'npm'
+
+if os.environ.has_key('CI'):
+  NPM = os.path.join(SOURCE_ROOT, 'node_modules', '.bin', 'npm')
+else:
+  NPM = 'npm'
+if sys.platform in ['win32', 'cygwin']:
+  NPM += '.cmd'
 
 
 def main():
   os.chdir(SOURCE_ROOT)
 
   args = parse_args()
+  if not args.yes and PLATFORM != 'win32':
+    check_root()
   if args.verbose:
-    enable_verbose_execute()
-  update_submodules()
-  update_node_modules('.')
-  update_atom_modules('spec')
-  bootstrap_brightray(args.url)
+    enable_verbose_mode()
   if sys.platform == 'cygwin':
     update_win32_python()
-  if sys.platform in ['win32', 'cygwin']:
-    install_runas()
+
+  if PLATFORM != 'win32':
+    update_clang()
+
+  update_submodules()
+  setup_python_libs()
+  update_node_modules('.')
+  bootstrap_brightray(args.dev, args.url, args.target_arch)
+
+  if args.target_arch in ['arm', 'ia32'] and PLATFORM == 'linux':
+    download_sysroot(args.target_arch)
 
   create_chrome_version_h()
   touch_config_gypi()
-  update_atom_shell()
+  run_update()
+  update_electron_modules('spec', args.target_arch)
 
 
 def parse_args():
@@ -45,45 +61,95 @@ def parse_args():
   parser.add_argument('-v', '--verbose',
                       action='store_true',
                       help='Prints the output of the subprocesses')
+  parser.add_argument('-d', '--dev', action='store_true',
+                      help='Do not download static_library build')
+  parser.add_argument('-y', '--yes', '--assume-yes',
+                      action='store_true',
+                      help='Run non-interactively by assuming "yes" to all ' \
+                           'prompts.')
+  parser.add_argument('--target_arch', default=get_target_arch(),
+                      help='Manually specify the arch to build for')
   return parser.parse_args()
 
 
+def check_root():
+  if os.geteuid() == 0:
+    print "We suggest not running this as root, unless you're really sure."
+    choice = raw_input("Do you want to continue? [y/N]: ")
+    if choice not in ('y', 'Y'):
+      sys.exit(0)
+
+
 def update_submodules():
-  execute(['git', 'submodule', 'sync'])
-  execute(['git', 'submodule', 'update', '--init', '--recursive'])
+  execute_stdout(['git', 'submodule', 'sync'])
+  execute_stdout(['git', 'submodule', 'update', '--init', '--recursive'])
 
 
-def bootstrap_brightray(url):
+def setup_python_libs():
+  for lib in ('requests', 'boto'):
+    with scoped_cwd(os.path.join(VENDOR_DIR, lib)):
+      execute_stdout([sys.executable, 'setup.py', 'build'])
+
+
+def bootstrap_brightray(is_dev, url, target_arch):
   bootstrap = os.path.join(VENDOR_DIR, 'brightray', 'script', 'bootstrap')
-  execute([sys.executable, bootstrap, '--commit', LIBCHROMIUMCONTENT_COMMIT,
-           url])
+  args = [
+    '--commit', LIBCHROMIUMCONTENT_COMMIT,
+    '--target_arch', target_arch,
+    url,
+  ]
+  if is_dev:
+    args = ['--dev'] + args
+  execute_stdout([sys.executable, bootstrap] + args)
 
 
-def update_node_modules(dirname):
+def update_node_modules(dirname, env=None):
+  if env is None:
+    env = os.environ
+  if PLATFORM == 'linux':
+    # Use prebuilt clang for building native modules.
+    llvm_dir = os.path.join(SOURCE_ROOT, 'vendor', 'llvm-build',
+                            'Release+Asserts', 'bin')
+    env['CC']  = os.path.join(llvm_dir, 'clang')
+    env['CXX'] = os.path.join(llvm_dir, 'clang++')
+    env['npm_config_clang'] = '1'
   with scoped_cwd(dirname):
-    execute([NPM, 'install'])
+    args = [NPM, 'install']
+    if is_verbose_mode():
+      args += ['--verbose']
+    # Ignore npm install errors when running in CI.
+    if os.environ.has_key('CI'):
+      try:
+        execute_stdout(args, env)
+      except subprocess.CalledProcessError:
+        pass
+    else:
+      execute_stdout(args, env)
 
 
-def update_atom_modules(dirname):
-  with scoped_cwd(dirname):
-    apm = os.path.join(SOURCE_ROOT, 'node_modules', '.bin', 'apm')
-    if sys.platform in ['win32', 'cygwin']:
-      apm = os.path.join(SOURCE_ROOT, 'node_modules', 'atom-package-manager',
-                         'bin', 'apm.cmd')
-    execute([apm, 'install'])
+def update_electron_modules(dirname, target_arch):
+  env = os.environ.copy()
+  env['npm_config_arch']    = target_arch
+  env['npm_config_target']  = get_atom_shell_version()
+  env['npm_config_disturl'] = 'https://atom.io/download/atom-shell'
+  update_node_modules(dirname, env)
 
 
 def update_win32_python():
   with scoped_cwd(VENDOR_DIR):
     if not os.path.exists('python_26'):
-      execute(['git', 'clone', PYTHON_26_URL])
+      execute_stdout(['git', 'clone', PYTHON_26_URL])
 
 
-def install_runas():
-  # TODO This is needed by the tools/win/register_msdia80_dll.js, should move
-  # this to a better place.
-  with scoped_cwd(os.path.join(SOURCE_ROOT, 'tools', 'win')):
-    execute([NPM, 'install', 'runas'])
+def update_clang():
+  execute_stdout([os.path.join(SOURCE_ROOT, 'script', 'update-clang.sh')])
+
+
+def download_sysroot(target_arch):
+  if target_arch == 'ia32':
+    target_arch = 'i386'
+  execute_stdout([os.path.join(SOURCE_ROOT, 'script', 'install-sysroot.py'),
+                  '--arch', target_arch])
 
 
 def create_chrome_version_h():
@@ -96,9 +162,16 @@ def create_chrome_version_h():
     version = f.read()
   with open(template_file, 'r') as f:
     template = f.read()
-  with open(target_file, 'w+') as f:
-    content = template.replace('{PLACEHOLDER}', version.strip())
-    if f.read() != content:
+  content = template.replace('{PLACEHOLDER}', version.strip())
+
+  # We update the file only if the content has changed (ignoring line ending
+  # differences).
+  should_write = True
+  if os.path.isfile(target_file):
+    with open(target_file, 'r') as f:
+      should_write = f.read().replace('r', '') != content.replace('r', '')
+  if should_write:
+    with open(target_file, 'w') as f:
       f.write(content)
 
 
@@ -110,9 +183,9 @@ def touch_config_gypi():
       f.write(content)
 
 
-def update_atom_shell():
+def run_update():
   update = os.path.join(SOURCE_ROOT, 'script', 'update.py')
-  execute([sys.executable, update])
+  execute_stdout([sys.executable, update])
 
 
 if __name__ == '__main__':

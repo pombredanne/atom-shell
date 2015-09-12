@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -25,13 +25,13 @@ class CrashReporterLinux : public CrashReporter {
  public:
   static CrashReporterLinux* GetInstance();
 
-  virtual void InitBreakpad(const std::string& product_name,
-                            const std::string& version,
-                            const std::string& company_name,
-                            const std::string& submit_url,
-                            bool auto_submit,
-                            bool skip_system_crash_handler) OVERRIDE;
-  virtual void SetUploadParameters() OVERRIDE;
+  void InitBreakpad(const std::string& product_name,
+                    const std::string& version,
+                    const std::string& company_name,
+                    const std::string& submit_url,
+                    bool auto_submit,
+                    bool skip_system_crash_handler) override;
+  void SetUploadParameters() override;
 
  private:
   friend struct DefaultSingletonTraits<CrashReporterLinux>;
@@ -39,7 +39,7 @@ class CrashReporterLinux : public CrashReporter {
   CrashReporterLinux();
   virtual ~CrashReporterLinux();
 
-  void EnableCrashDumping();
+  void EnableCrashDumping(const std::string& product_name);
 
   static bool CrashDone(const google_breakpad::MinidumpDescriptor& minidump,
                         void* context,

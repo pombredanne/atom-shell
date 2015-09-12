@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 namespace mate {
 
 bool Converter<base::DictionaryValue>::FromV8(v8::Isolate* isolate,
-                                              v8::Handle<v8::Value> val,
+                                              v8::Local<v8::Value> val,
                                               base::DictionaryValue* out) {
   scoped_ptr<atom::V8ValueConverter> converter(new atom::V8ValueConverter);
   scoped_ptr<base::Value> value(converter->FromV8Value(
@@ -23,8 +23,15 @@ bool Converter<base::DictionaryValue>::FromV8(v8::Isolate* isolate,
   }
 }
 
+v8::Local<v8::Value> Converter<base::DictionaryValue>::ToV8(
+    v8::Isolate* isolate,
+    const base::DictionaryValue& val) {
+  scoped_ptr<atom::V8ValueConverter> converter(new atom::V8ValueConverter);
+  return converter->ToV8Value(&val, isolate->GetCurrentContext());
+}
+
 bool Converter<base::ListValue>::FromV8(v8::Isolate* isolate,
-                                        v8::Handle<v8::Value> val,
+                                        v8::Local<v8::Value> val,
                                         base::ListValue* out) {
   scoped_ptr<atom::V8ValueConverter> converter(new atom::V8ValueConverter);
   scoped_ptr<base::Value> value(converter->FromV8Value(
@@ -35,6 +42,13 @@ bool Converter<base::ListValue>::FromV8(v8::Isolate* isolate,
   } else {
     return false;
   }
+}
+
+v8::Local<v8::Value> Converter<base::ListValue>::ToV8(
+    v8::Isolate* isolate,
+    const base::ListValue& val) {
+  scoped_ptr<atom::V8ValueConverter> converter(new atom::V8ValueConverter);
+  return converter->ToV8Value(&val, isolate->GetCurrentContext());
 }
 
 }  // namespace mate

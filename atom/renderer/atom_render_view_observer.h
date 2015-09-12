@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -26,15 +26,20 @@ class AtomRenderViewObserver : public content::RenderViewObserver {
 
  private:
   // content::RenderViewObserver implementation.
-  virtual void DidCreateDocumentElement(blink::WebLocalFrame* frame) OVERRIDE;
-  virtual void DraggableRegionsChanged(blink::WebFrame* frame) OVERRIDE;
-  virtual bool OnMessageReceived(const IPC::Message& message) OVERRIDE;
+  void DidCreateDocumentElement(blink::WebLocalFrame* frame) override;
+  void DraggableRegionsChanged(blink::WebFrame* frame) override;
+  bool OnMessageReceived(const IPC::Message& message) override;
 
   void OnBrowserMessage(const base::string16& channel,
                         const base::ListValue& args);
+  void OnJavaScriptExecuteRequest(const base::string16& code,
+                                  bool has_user_gesture);
 
   // Weak reference to renderer client.
   AtomRendererClient* renderer_client_;
+
+  // Whether the document object has been created.
+  bool document_created_;
 
   DISALLOW_COPY_AND_ASSIGN(AtomRenderViewObserver);
 };

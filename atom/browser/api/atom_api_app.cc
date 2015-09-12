@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -7,30 +7,76 @@
 #include <string>
 #include <vector>
 
+#if defined(OS_WIN)
+#include <shlobj.h>
+#endif
+
+#include "atom/browser/api/atom_api_menu.h"
+#include "atom/browser/api/atom_api_session.h"
 #include "atom/browser/atom_browser_context.h"
+#include "atom/browser/atom_browser_main_parts.h"
 #include "atom/browser/browser.h"
+#include "atom/browser/api/atom_api_web_contents.h"
+#include "atom/common/native_mate_converters/callback.h"
 #include "atom/common/native_mate_converters/file_path_converter.h"
-#include "atom/common/native_mate_converters/gurl_converter.h"
-#include "base/values.h"
+#include "atom/common/node_includes.h"
 #include "base/command_line.h"
 #include "base/environment.h"
 #include "base/files/file_path.h"
 #include "base/path_service.h"
-#include "native_mate/callback.h"
+#include "brightray/browser/brightray_paths.h"
+#include "content/public/browser/client_certificate_delegate.h"
+#include "content/public/browser/gpu_data_manager.h"
 #include "native_mate/dictionary.h"
 #include "native_mate/object_template_builder.h"
-#include "net/base/load_flags.h"
-#include "net/proxy/proxy_service.h"
-#include "net/url_request/url_request_context.h"
-#include "net/url_request/url_request_context_getter.h"
+#include "net/ssl/ssl_cert_request_info.h"
 
-#include "atom/common/node_includes.h"
-
-#if defined(OS_LINUX)
-#include "base/nix/xdg_util.h"
+#if defined(OS_WIN)
+#include "base/strings/utf_string_conversions.h"
 #endif
 
 using atom::Browser;
+
+namespace mate {
+
+#if defined(OS_WIN)
+template<>
+struct Converter<Browser::UserTask> {
+  static bool FromV8(v8::Isolate* isolate, v8::Local<v8::Value> val,
+                     Browser::UserTask* out) {
+    mate::Dictionary dict;
+    if (!ConvertFromV8(isolate, val, &dict))
+      return false;
+    if (!dict.Get("program", &(out->program)) ||
+        !dict.Get("title", &(out->title)))
+      return false;
+    if (dict.Get("iconPath", &(out->icon_path)) &&
+        !dict.Get("iconIndex", &(out->icon_index)))
+      return false;
+    dict.Get("arguments", &(out->arguments));
+    dict.Get("description", &(out->description));
+    return true;
+  }
+};
+#endif
+
+template<>
+struct Converter<scoped_refptr<net::X509Certificate>> {
+  static v8::Local<v8::Value> ToV8(
+      v8::Isolate* isolate,
+      const scoped_refptr<net::X509Certificate>& val) {
+    mate::Dictionary dict(isolate, v8::Object::New(isolate));
+    std::string encoded_data;
+    net::X509Certificate::GetPEMEncoded(
+        val->os_cert_handle(), &encoded_data);
+    dict.Set("data", encoded_data);
+    dict.Set("issuerName", val->issuer().GetDisplayName());
+    return dict.GetHandle();
+  }
+};
+
+}  // namespace mate
+
 
 namespace atom {
 
@@ -38,50 +84,67 @@ namespace api {
 
 namespace {
 
-class ResolveProxyHelper {
- public:
-  ResolveProxyHelper(const GURL& url, App::ResolveProxyCallback callback)
-      : callback_(callback) {
-    net::ProxyService* proxy_service = AtomBrowserContext::Get()->
-        url_request_context_getter()->GetURLRequestContext()->proxy_service();
+// Return the path constant from string.
+int GetPathConstant(const std::string& name) {
+  if (name == "appData")
+    return brightray::DIR_APP_DATA;
+  else if (name == "userData")
+    return brightray::DIR_USER_DATA;
+  else if (name == "cache")
+    return brightray::DIR_CACHE;
+  else if (name == "userCache")
+    return brightray::DIR_USER_CACHE;
+  else if (name == "home")
+    return base::DIR_HOME;
+  else if (name == "temp")
+    return base::DIR_TEMP;
+  else if (name == "userDesktop")
+    return base::DIR_USER_DESKTOP;
+  else if (name == "exe")
+    return base::FILE_EXE;
+  else if (name == "module")
+    return base::FILE_MODULE;
+  else
+    return -1;
+}
 
-    // Start the request.
-    int result = proxy_service->ResolveProxy(
-        url, net::LOAD_NORMAL, &proxy_info_,
-        base::Bind(&ResolveProxyHelper::OnResolveProxyCompleted,
-                   base::Unretained(this)),
-        &pac_req_, nullptr, net::BoundNetLog());
-
-    // Completed synchronously.
-    if (result != net::ERR_IO_PENDING)
-      OnResolveProxyCompleted(result);
+void OnClientCertificateSelected(
+    v8::Isolate* isolate,
+    std::shared_ptr<content::ClientCertificateDelegate> delegate,
+    mate::Arguments* args) {
+  v8::Locker locker(isolate);
+  v8::HandleScope handle_scope(isolate);
+  mate::Dictionary cert_data;
+  if (!(args->Length() == 1 && args->GetNext(&cert_data))) {
+    args->ThrowError();
+    return;
   }
 
-  void OnResolveProxyCompleted(int result) {
-    std::string proxy;
-    if (result == net::OK)
-      proxy = proxy_info_.ToPacString();
-    callback_.Run(proxy);
+  std::string encoded_data;
+  cert_data.Get("data", &encoded_data);
 
-    delete this;
-  }
+  auto certs =
+      net::X509Certificate::CreateCertificateListFromBytes(
+          encoded_data.data(), encoded_data.size(),
+          net::X509Certificate::FORMAT_AUTO);
 
- private:
-  App::ResolveProxyCallback callback_;
-  net::ProxyInfo proxy_info_;
-  net::ProxyService::PacRequest* pac_req_;
-
-  DISALLOW_COPY_AND_ASSIGN(ResolveProxyHelper);
-};
+  delegate->ContinueWithCertificate(certs[0].get());
+}
 
 }  // namespace
 
 App::App() {
   Browser::Get()->AddObserver(this);
+  content::GpuDataManager::GetInstance()->AddObserver(this);
 }
 
 App::~App() {
   Browser::Get()->RemoveObserver(this);
+  content::GpuDataManager::GetInstance()->RemoveObserver(this);
+}
+
+void App::OnBeforeQuit(bool* prevent_default) {
+  *prevent_default = Emit("before-quit");
 }
 
 void App::OnWillQuit(bool* prevent_default) {
@@ -97,15 +160,11 @@ void App::OnQuit() {
 }
 
 void App::OnOpenFile(bool* prevent_default, const std::string& file_path) {
-  base::ListValue args;
-  args.AppendString(file_path);
-  *prevent_default = Emit("open-file", args);
+  *prevent_default = Emit("open-file", file_path);
 }
 
 void App::OnOpenURL(const std::string& url) {
-  base::ListValue args;
-  args.AppendString(url);
-  Emit("open-url", args);
+  Emit("open-url", url);
 }
 
 void App::OnActivateWithNoOpenWindows() {
@@ -117,26 +176,62 @@ void App::OnWillFinishLaunching() {
 }
 
 void App::OnFinishLaunching() {
+  // Create the defaultSession.
+  v8::Locker locker(isolate());
+  v8::HandleScope handle_scope(isolate());
+  auto browser_context = static_cast<AtomBrowserContext*>(
+      AtomBrowserMainParts::Get()->browser_context());
+  auto handle = Session::CreateFrom(isolate(), browser_context);
+  default_session_.Reset(isolate(), handle.ToV8());
+
   Emit("ready");
 }
 
-base::FilePath App::GetDataPath() {
-  base::FilePath path;
-#if defined(OS_LINUX)
-  scoped_ptr<base::Environment> env(base::Environment::Create());
-  path = base::nix::GetXDGDirectory(env.get(),
-                                    base::nix::kXdgConfigHomeEnvVar,
-                                    base::nix::kDotConfigDir);
-#else
-  PathService::Get(base::DIR_APP_DATA, &path);
-#endif
+void App::OnSelectCertificate(
+    content::WebContents* web_contents,
+    net::SSLCertRequestInfo* cert_request_info,
+    scoped_ptr<content::ClientCertificateDelegate> delegate) {
+  std::shared_ptr<content::ClientCertificateDelegate>
+      shared_delegate(delegate.release());
+  bool prevent_default =
+      Emit("select-certificate",
+           api::WebContents::CreateFrom(isolate(), web_contents),
+           cert_request_info->host_and_port.ToString(),
+           cert_request_info->client_certs,
+           base::Bind(&OnClientCertificateSelected,
+                      isolate(),
+                      shared_delegate));
 
-  return path.Append(base::FilePath::FromUTF8Unsafe(
-      Browser::Get()->GetName()));
+  // Default to first certificate from the platform store.
+  if (!prevent_default)
+    shared_delegate->ContinueWithCertificate(
+        cert_request_info->client_certs[0].get());
 }
 
-void App::ResolveProxy(const GURL& url, ResolveProxyCallback callback) {
-  new ResolveProxyHelper(url, callback);
+void App::OnGpuProcessCrashed(base::TerminationStatus exit_code) {
+  Emit("gpu-process-crashed");
+}
+
+base::FilePath App::GetPath(mate::Arguments* args, const std::string& name) {
+  bool succeed = false;
+  base::FilePath path;
+  int key = GetPathConstant(name);
+  if (key >= 0)
+    succeed = PathService::Get(key, &path);
+  if (!succeed)
+    args->ThrowError("Failed to get path");
+  return path;
+}
+
+void App::SetPath(mate::Arguments* args,
+                  const std::string& name,
+                  const base::FilePath& path) {
+  bool succeed = false;
+  int key = GetPathConstant(name);
+  if (key >= 0)
+    succeed = PathService::Override(key, path);
+  if (!succeed)
+    args->ThrowError("Failed to set path");
 }
 
 void App::SetDesktopName(const std::string& desktop_name) {
@@ -146,25 +241,44 @@ void App::SetDesktopName(const std::string& desktop_name) {
 #endif
 }
 
+void App::SetAppUserModelId(const std::string& app_id) {
+#if defined(OS_WIN)
+  base::string16 app_id_utf16 = base::UTF8ToUTF16(app_id);
+  SetCurrentProcessExplicitAppUserModelID(app_id_utf16.c_str());
+#endif
+}
+
+v8::Local<v8::Value> App::DefaultSession(v8::Isolate* isolate) {
+  if (default_session_.IsEmpty())
+    return v8::Null(isolate);
+  else
+    return v8::Local<v8::Value>::New(isolate, default_session_);
+}
+
 mate::ObjectTemplateBuilder App::GetObjectTemplateBuilder(
     v8::Isolate* isolate) {
-  Browser* browser = Browser::Get();
+  auto browser = base::Unretained(Browser::Get());
   return mate::ObjectTemplateBuilder(isolate)
-      .SetMethod("quit", base::Bind(&Browser::Quit,
-                                    base::Unretained(browser)))
-      .SetMethod("focus", base::Bind(&Browser::Focus,
-                                     base::Unretained(browser)))
-      .SetMethod("getVersion", base::Bind(&Browser::GetVersion,
-                                          base::Unretained(browser)))
-      .SetMethod("setVersion", base::Bind(&Browser::SetVersion,
-                                          base::Unretained(browser)))
-      .SetMethod("getName", base::Bind(&Browser::GetName,
-                                       base::Unretained(browser)))
-      .SetMethod("setName", base::Bind(&Browser::SetName,
-                                       base::Unretained(browser)))
-      .SetMethod("getDataPath", &App::GetDataPath)
-      .SetMethod("resolveProxy", &App::ResolveProxy)
-      .SetMethod("setDesktopName", &App::SetDesktopName);
+      .SetMethod("quit", base::Bind(&Browser::Quit, browser))
+      .SetMethod("focus", base::Bind(&Browser::Focus, browser))
+      .SetMethod("getVersion", base::Bind(&Browser::GetVersion, browser))
+      .SetMethod("setVersion", base::Bind(&Browser::SetVersion, browser))
+      .SetMethod("getName", base::Bind(&Browser::GetName, browser))
+      .SetMethod("setName", base::Bind(&Browser::SetName, browser))
+      .SetMethod("isReady", base::Bind(&Browser::is_ready, browser))
+      .SetMethod("addRecentDocument",
+                 base::Bind(&Browser::AddRecentDocument, browser))
+      .SetMethod("clearRecentDocuments",
+                 base::Bind(&Browser::ClearRecentDocuments, browser))
+#if defined(OS_WIN)
+      .SetMethod("setUserTasks",
+                 base::Bind(&Browser::SetUserTasks, browser))
+#endif
+      .SetMethod("setPath", &App::SetPath)
+      .SetMethod("getPath", &App::GetPath)
+      .SetMethod("setDesktopName", &App::SetDesktopName)
+      .SetMethod("setAppUserModelId", &App::SetAppUserModelId)
+      .SetProperty("defaultSession", &App::DefaultSession);
 }
 
 // static
@@ -180,11 +294,12 @@ mate::Handle<App> App::Create(v8::Isolate* isolate) {
 namespace {
 
 void AppendSwitch(const std::string& switch_string, mate::Arguments* args) {
+  auto command_line = base::CommandLine::ForCurrentProcess();
   std::string value;
   if (args->GetNext(&value))
-    CommandLine::ForCurrentProcess()->AppendSwitchASCII(switch_string, value);
+    command_line->AppendSwitchASCII(switch_string, value);
   else
-    CommandLine::ForCurrentProcess()->AppendSwitch(switch_string);
+    command_line->AppendSwitch(switch_string);
 }
 
 #if defined(OS_MACOSX)
@@ -196,35 +311,35 @@ int DockBounce(const std::string& type) {
     request_id = Browser::Get()->DockBounce(Browser::BOUNCE_INFORMATIONAL);
   return request_id;
 }
+
+void DockSetMenu(atom::api::Menu* menu) {
+  Browser::Get()->DockSetMenu(menu->model());
+}
 #endif
 
-void Initialize(v8::Handle<v8::Object> exports, v8::Handle<v8::Value> unused,
-                v8::Handle<v8::Context> context, void* priv) {
+void Initialize(v8::Local<v8::Object> exports, v8::Local<v8::Value> unused,
+                v8::Local<v8::Context> context, void* priv) {
   v8::Isolate* isolate = context->GetIsolate();
-  Browser* browser = Browser::Get();
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  auto command_line = base::CommandLine::ForCurrentProcess();
 
   mate::Dictionary dict(isolate, exports);
   dict.Set("app", atom::api::App::Create(isolate));
   dict.SetMethod("appendSwitch", &AppendSwitch);
   dict.SetMethod("appendArgument",
-                 base::Bind(&CommandLine::AppendArg,
+                 base::Bind(&base::CommandLine::AppendArg,
                             base::Unretained(command_line)));
 #if defined(OS_MACOSX)
+  auto browser = base::Unretained(Browser::Get());
   dict.SetMethod("dockBounce", &DockBounce);
   dict.SetMethod("dockCancelBounce",
-                 base::Bind(&Browser::DockCancelBounce,
-                            base::Unretained(browser)));
+                 base::Bind(&Browser::DockCancelBounce, browser));
   dict.SetMethod("dockSetBadgeText",
-                 base::Bind(&Browser::DockSetBadgeText,
-                            base::Unretained(browser)));
+                 base::Bind(&Browser::DockSetBadgeText, browser));
   dict.SetMethod("dockGetBadgeText",
-                 base::Bind(&Browser::DockGetBadgeText,
-                            base::Unretained(browser)));
-  dict.SetMethod("dockHide",
-                 base::Bind(&Browser::DockHide, base::Unretained(browser)));
-  dict.SetMethod("dockShow",
-                 base::Bind(&Browser::DockShow, base::Unretained(browser)));
+                 base::Bind(&Browser::DockGetBadgeText, browser));
+  dict.SetMethod("dockHide", base::Bind(&Browser::DockHide, browser));
+  dict.SetMethod("dockShow", base::Bind(&Browser::DockShow, browser));
+  dict.SetMethod("dockSetMenu", &DockSetMenu);
 #endif
 }
 

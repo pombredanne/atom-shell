@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -60,7 +60,8 @@ class WindowList {
 
   // A list of observers which will be notified of every window addition and
   // removal across all WindowLists.
-  static base::LazyInstance<ObserverList<WindowListObserver>>::Leaky observers_;
+  static base::LazyInstance<base::ObserverList<WindowListObserver>>::Leaky
+      observers_;
 
   static WindowList* instance_;
 

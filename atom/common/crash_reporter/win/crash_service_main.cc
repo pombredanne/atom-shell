@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include "atom/common/crash_reporter/win/crash_service.h"
 #include "base/at_exit.h"
 #include "base/command_line.h"
-#include "base/file_util.h"
+#include "base/files/file_util.h"
 #include "base/logging.h"
 #include "base/strings/string_util.h"
 
@@ -39,8 +39,8 @@ bool GetCrashServiceDirectory(const std::wstring& application_name,
 int Main(const wchar_t* cmd) {
   // Initialize all Chromium things.
   base::AtExitManager exit_manager;
-  CommandLine::Init(0, NULL);
-  CommandLine& cmd_line = *CommandLine::ForCurrentProcess();
+  base::CommandLine::Init(0, NULL);
+  base::CommandLine& cmd_line = *base::CommandLine::ForCurrentProcess();
 
   // Use the application's name as pipe name and output directory.
   if (!cmd_line.HasSwitch(kApplicationName)) {
@@ -73,11 +73,12 @@ int Main(const wchar_t* cmd) {
                                                  NULL);
   cmd_line.AppendSwitch("no-window");
   cmd_line.AppendSwitchASCII("max-reports", "128");
-  cmd_line.AppendSwitchASCII("reporter", "atom-shell-crash-service");
+  cmd_line.AppendSwitchASCII("reporter", ATOM_PROJECT_NAME "-crash-service");
   cmd_line.AppendSwitchNative("pipe-name", pipe_name);
 
   breakpad::CrashService crash_service;
-  if (!crash_service.Initialize(operating_dir, operating_dir))
+  if (!crash_service.Initialize(application_name, operating_dir,
+                                operating_dir))
     return 2;
 
   VLOG(1) << "Ready to process crash requests";

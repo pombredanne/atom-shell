@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -9,11 +9,17 @@
 #include <vector>
 
 #include "base/memory/scoped_ptr.h"
+#include "ui/gfx/image/image.h"
+#include "atom/browser/api/trackable_object.h"
+#include "atom/browser/native_window.h"
 #include "atom/browser/native_window_observer.h"
-#include "atom/browser/api/event_emitter.h"
 #include "native_mate/handle.h"
 
 class GURL;
+
+namespace gfx {
+class Rect;
+}
 
 namespace mate {
 class Arguments;
@@ -28,37 +34,60 @@ namespace api {
 
 class WebContents;
 
-class Window : public mate::EventEmitter,
+class Window : public mate::TrackableObject<Window>,
                public NativeWindowObserver {
  public:
-  static mate::Wrappable* New(const mate::Dictionary& options);
+  static mate::Wrappable* New(v8::Isolate* isolate,
+                              const mate::Dictionary& options);
 
   static void BuildPrototype(v8::Isolate* isolate,
-                             v8::Handle<v8::ObjectTemplate> prototype);
+                             v8::Local<v8::ObjectTemplate> prototype);
 
   NativeWindow* window() const { return window_.get(); }
 
  protected:
-  explicit Window(const mate::Dictionary& options);
+  Window(v8::Isolate* isolate, const mate::Dictionary& options);
   virtual ~Window();
 
-  // Implementations of NativeWindowObserver:
-  virtual void OnPageTitleUpdated(bool* prevent_default,
-                                  const std::string& title) OVERRIDE;
-  virtual void WillCloseWindow(bool* prevent_default) OVERRIDE;
-  virtual void OnWindowClosed() OVERRIDE;
-  virtual void OnWindowBlur() OVERRIDE;
-  virtual void OnWindowFocus() OVERRIDE;
-  virtual void OnRendererUnresponsive() OVERRIDE;
-  virtual void OnRendererResponsive() OVERRIDE;
+  // NativeWindowObserver:
+  void OnPageTitleUpdated(bool* prevent_default,
+                          const std::string& title) override;
+  void WillCloseWindow(bool* prevent_default) override;
+  void OnWindowClosed() override;
+  void OnWindowBlur() override;
+  void OnWindowFocus() override;
+  void OnWindowMaximize() override;
+  void OnWindowUnmaximize() override;
+  void OnWindowMinimize() override;
+  void OnWindowRestore() override;
+  void OnWindowResize() override;
+  void OnWindowMove() override;
+  void OnWindowMoved() override;
+  void OnWindowEnterFullScreen() override;
+  void OnWindowLeaveFullScreen() override;
+  void OnWindowEnterHtmlFullScreen() override;
+  void OnWindowLeaveHtmlFullScreen() override;
+  void OnRendererUnresponsive() override;
+  void OnRendererResponsive() override;
+  void OnDevToolsFocus() override;
+  void OnDevToolsOpened() override;
+  void OnDevToolsClosed() override;
+  void OnExecuteWindowsCommand(const std::string& command_name) override;
+
+  // mate::Wrappable:
+  bool IsDestroyed() const override;
 
  private:
+  // mate::TrackableObject:
+  void Destroy() override;
+
   // APIs for NativeWindow.
-  void Destroy();
   void Close();
+  bool IsClosed();
   void Focus();
   bool IsFocused();
   void Show();
+  void ShowInactive();
   void Hide();
   bool IsVisible();
   void Maximize();
@@ -67,8 +96,10 @@ class Window : public mate::EventEmitter,
   void Minimize();
   void Restore();
   bool IsMinimized();
-  void SetFullscreen(bool fullscreen);
+  void SetFullScreen(bool fullscreen);
   bool IsFullscreen();
+  void SetBounds(const gfx::Rect& bounds);
+  gfx::Rect GetBounds();
   void SetSize(int width, int height);
   std::vector<int> GetSize();
   void SetContentSize(int width, int height);
@@ -90,10 +121,6 @@ class Window : public mate::EventEmitter,
   void SetSkipTaskbar(bool skip);
   void SetKiosk(bool kiosk);
   bool IsKiosk();
-  void OpenDevTools();
-  void CloseDevTools();
-  bool IsDevToolsOpened();
-  void InspectElement(int x, int y);
   void FocusOnWebView();
   void BlurWebView();
   bool IsWebViewFocused();
@@ -102,12 +129,33 @@ class Window : public mate::EventEmitter,
   void SetDocumentEdited(bool edited);
   bool IsDocumentEdited();
   void CapturePage(mate::Arguments* args);
-  void Print(mate::Arguments* args);
   void SetProgressBar(double progress);
+  void SetOverlayIcon(const gfx::Image& overlay,
+                      const std::string& description);
+  bool SetThumbarButtons(mate::Arguments* args);
+  void SetMenu(v8::Isolate* isolate, v8::Local<v8::Value> menu);
+  void SetAutoHideMenuBar(bool auto_hide);
+  bool IsMenuBarAutoHide();
+  void SetMenuBarVisibility(bool visible);
+  bool IsMenuBarVisible();
+  void SetAspectRatio(double aspect_ratio, mate::Arguments* args);
 
-  // APIs for WebContents.
-  mate::Handle<WebContents> GetWebContents(v8::Isolate* isolate) const;
-  mate::Handle<WebContents> GetDevToolsWebContents(v8::Isolate* isolate) const;
+#if defined(OS_MACOSX)
+  void ShowDefinitionForSelection();
+#endif
+
+  void SetVisibleOnAllWorkspaces(bool visible);
+  bool IsVisibleOnAllWorkspaces();
+
+  int32_t ID() const;
+  v8::Local<v8::Value> WebContents(v8::Isolate* isolate);
+  v8::Local<v8::Value> DevToolsWebContents(v8::Isolate* isolate);
+
+  v8::Global<v8::Value> web_contents_;
+  v8::Global<v8::Value> devtools_web_contents_;
+  v8::Global<v8::Value> menu_;
+
+  api::WebContents* api_web_contents_;
 
   scoped_ptr<NativeWindow> window_;
 
@@ -123,7 +171,7 @@ namespace mate {
 
 template<>
 struct Converter<atom::NativeWindow*> {
-  static bool FromV8(v8::Isolate* isolate, v8::Handle<v8::Value> val,
+  static bool FromV8(v8::Isolate* isolate, v8::Local<v8::Value> val,
                      atom::NativeWindow** out) {
     // null would be tranfered to NULL.
     if (val->IsNull()) {

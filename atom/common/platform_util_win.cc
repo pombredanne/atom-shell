@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -13,6 +13,7 @@
 #include "base/bind.h"
 #include "base/bind_helpers.h"
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/logging.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -29,8 +30,8 @@ namespace {
 // is empty. This function tells if it is.
 bool ValidateShellCommandForScheme(const std::string& scheme) {
   base::win::RegKey key;
-  std::wstring registry_path = base::ASCIIToWide(scheme) +
-                               L"\\shell\\open\\command";
+  base::string16 registry_path = base::ASCIIToUTF16(scheme) +
+                                 L"\\shell\\open\\command";
   key.Open(HKEY_CLASSES_ROOT, registry_path.c_str(), KEY_READ);
   if (!key.Valid())
     return false;
@@ -128,10 +129,13 @@ void ShowItemInFolder(const base::FilePath& full_path) {
 }
 
 void OpenItem(const base::FilePath& full_path) {
-  ui::win::OpenItemViaShell(full_path);
+  if (base::DirectoryExists(full_path))
+    ui::win::OpenFolderViaShell(full_path);
+  else
+    ui::win::OpenFileViaShell(full_path);
 }
 
-void OpenExternal(const GURL& url) {
+bool OpenExternal(const GURL& url) {
   // Quote the input scheme to be sure that the command does not have
   // parameters unexpected by the external program. This url should already
   // have been escaped.
@@ -146,12 +150,12 @@ void OpenExternal(const GURL& url) {
   const size_t kMaxUrlLength = 2048;
   if (escaped_url.length() > kMaxUrlLength) {
     NOTREACHED();
-    return;
+    return false;
   }
 
   if (base::win::GetVersion() < base::win::VERSION_WIN7) {
     if (!ValidateShellCommandForScheme(url.scheme()))
-      return;
+      return false;
   }
 
   if (reinterpret_cast<ULONG_PTR>(ShellExecuteA(NULL, "open",
@@ -160,11 +164,12 @@ void OpenExternal(const GURL& url) {
     // We fail to execute the call. We could display a message to the user.
     // TODO(nsylvain): we should also add a dialog to warn on errors. See
     // bug 1136923.
-    return;
+    return false;
   }
+  return true;
 }
 
-void MoveItemToTrash(const base::FilePath& path) {
+bool MoveItemToTrash(const base::FilePath& path) {
   // SHFILEOPSTRUCT wants the path to be terminated with two NULLs,
   // so we have to use wcscpy because wcscpy_s writes non-NULLs
   // into the rest of the buffer.
@@ -176,7 +181,21 @@ void MoveItemToTrash(const base::FilePath& path) {
   file_operation.wFunc = FO_DELETE;
   file_operation.pFrom = double_terminated_path;
   file_operation.fFlags = FOF_ALLOWUNDO | FOF_SILENT | FOF_NOCONFIRMATION;
-  SHFileOperation(&file_operation);
+  int err = SHFileOperation(&file_operation);
+
+  // Since we're passing flags to the operation telling it to be silent,
+  // it's possible for the operation to be aborted/cancelled without err
+  // being set (although MSDN doesn't give any scenarios for how this can
+  // happen).  See MSDN for SHFileOperation and SHFILEOPTSTRUCT.
+  if (file_operation.fAnyOperationsAborted)
+    return false;
+
+  // Some versions of Windows return ERROR_FILE_NOT_FOUND (0x2) when deleting
+  // an empty directory and some return 0x402 when they should be returning
+  // ERROR_FILE_NOT_FOUND. MSDN says Vista and up won't return 0x402.  Windows 7
+  // can return DE_INVALIDFILES (0x7C) for nonexistent directories.
+  return (err == 0 || err == ERROR_FILE_NOT_FOUND || err == 0x402 ||
+          err == 0x7C);
 }
 
 void Beep() {

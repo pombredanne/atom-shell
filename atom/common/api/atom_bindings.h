@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -24,7 +24,7 @@ class AtomBindings {
 
   // Add process.atomBinding function, which behaves like process.binding but
   // load native code from atom-shell instead.
-  virtual void BindTo(v8::Isolate* isolate, v8::Handle<v8::Object> process);
+  void BindTo(v8::Isolate* isolate, v8::Local<v8::Object> process);
 
  private:
   void ActivateUVLoop(v8::Isolate* isolate);

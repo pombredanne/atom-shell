@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include "atom/common/chrome_version.h"
 #include "atom/common/native_mate_converters/string16_converter.h"
 #include "base/logging.h"
-#include "native_mate/callback.h"
+#include "base/process/process_metrics.h"
 #include "native_mate/dictionary.h"
 
 #include "atom/common/node_includes.h"
@@ -20,22 +20,16 @@ namespace atom {
 
 namespace {
 
-// Async handle to execute the stored v8 callback.
-uv_async_t g_callback_uv_handle;
-
-// Stored v8 callback, to be called by the async handler.
-base::Closure g_v8_callback;
-
 // Dummy class type that used for crashing the program.
 struct DummyClass { bool crash; };
 
-// Async handler to execute the stored v8 callback.
-void UvOnCallback(uv_async_t* handle) {
-  g_v8_callback.Run();
-}
-
 void Crash() {
   static_cast<DummyClass*>(NULL)->crash = true;
+}
+
+void Hang() {
+  for (;;)
+    base::PlatformThread::Sleep(base::TimeDelta::FromSeconds(1));
 }
 
 // Called when there is a fatal error in V8, we just crash the process here so
@@ -49,41 +43,39 @@ void Log(const base::string16& message) {
   logging::LogMessage("CONSOLE", 0, 0).stream() << message;
 }
 
-void ScheduleCallback(const base::Closure& callback) {
-  g_v8_callback = callback;
-  uv_async_send(&g_callback_uv_handle);
-}
-
 }  // namespace
 
 
 AtomBindings::AtomBindings() {
   uv_async_init(uv_default_loop(), &call_next_tick_async_, OnCallNextTick);
   call_next_tick_async_.data = this;
-
-  uv_async_init(uv_default_loop(), &g_callback_uv_handle, UvOnCallback);
 }
 
 AtomBindings::~AtomBindings() {
 }
 
 void AtomBindings::BindTo(v8::Isolate* isolate,
-                          v8::Handle<v8::Object> process) {
+                          v8::Local<v8::Object> process) {
   v8::V8::SetFatalErrorHandler(FatalErrorCallback);
 
   mate::Dictionary dict(isolate, process);
   dict.SetMethod("crash", &Crash);
+  dict.SetMethod("hang", &Hang);
   dict.SetMethod("log", &Log);
-  dict.SetMethod("scheduleCallback", &ScheduleCallback);
+#if defined(OS_POSIX)
+  dict.SetMethod("setFdLimit", &base::SetFdLimit);
+#endif
   dict.SetMethod("activateUvLoop",
       base::Bind(&AtomBindings::ActivateUVLoop, base::Unretained(this)));
 
-  v8::Handle<v8::Object> versions;
+  // Do not warn about deprecated APIs.
+  dict.Set("noDeprecation", true);
+
+  mate::Dictionary versions;
   if (dict.Get("versions", &versions)) {
-    versions->Set(mate::StringToV8(isolate, "atom-shell"),
-                  mate::StringToV8(isolate, ATOM_VERSION_STRING));
-    versions->Set(mate::StringToV8(isolate, "chrome"),
-                  mate::StringToV8(isolate, CHROME_VERSION_STRING));
+    versions.Set(ATOM_PROJECT_NAME, ATOM_VERSION_STRING);
+    versions.Set("atom-shell", ATOM_VERSION_STRING);  // For compatibility.
+    versions.Set("chrome", CHROME_VERSION_STRING);
   }
 }
 
@@ -109,6 +101,10 @@ void AtomBindings::OnCallNextTick(uv_async_t* handle) {
     v8::Context::Scope context_scope(env->context());
     if (tick_info->in_tick())
       continue;
+
+    if (tick_info->length() == 0) {
+      env->isolate()->RunMicrotasks();
+    }
 
     if (tick_info->length() == 0) {
       tick_info->set_index(0);

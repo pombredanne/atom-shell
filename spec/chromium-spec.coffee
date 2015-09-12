@@ -1,11 +1,14 @@
 assert = require 'assert'
 http = require 'http'
+https = require 'https'
 path = require 'path'
+ws = require 'ws'
+remote = require 'remote'
 
 describe 'chromium feature', ->
   fixtures = path.resolve __dirname, 'fixtures'
 
-  describe 'heap snapshot', ->
+  xdescribe 'heap snapshot', ->
     it 'does not crash', ->
       process.atomBinding('v8_util').takeHeapSnapshot()
 
@@ -32,42 +35,57 @@ describe 'chromium feature', ->
       assert.notEqual navigator.language, ''
 
   describe 'window.open', ->
-    it 'returns a BrowserWindow object', ->
-      b = window.open 'about:blank', 'test', 'show=no'
-      assert.equal b.constructor.name, 'BrowserWindow'
-      b.destroy()
+    it 'returns a BrowserWindowProxy object', ->
+      b = window.open 'about:blank', '', 'show=no'
+      assert.equal b.closed, false
+      assert.equal b.constructor.name, 'BrowserWindowProxy'
+      b.close()
 
-  describe 'iframe', ->
-    page = path.join fixtures, 'pages', 'change-parent.html'
-
-    beforeEach ->
-      global.changedByIframe = false
-
-    it 'can not modify parent by default', (done) ->
-      iframe = $('<iframe>')
-      iframe.hide()
-      iframe.attr 'src', "file://#{page}"
-      iframe.appendTo 'body'
-      isChanged = ->
-        iframe.remove()
-        assert.equal global.changedByIframe, false
+    it 'accepts "node-integration" as feature', (done) ->
+      listener = (event) ->
+        window.removeEventListener 'message', listener
+        b.close()
+        assert.equal event.data, 'undefined'
         done()
-      setTimeout isChanged, 30
+      window.addEventListener 'message', listener
+      b = window.open "file://#{fixtures}/pages/window-opener-node.html", '', 'node-integration=no,show=no'
 
-    it 'can modify parent when sanbox is set to none', (done) ->
-      iframe = $('<iframe sandbox="none">')
-      iframe.hide()
-      iframe.attr 'src', "file://#{page}"
-      iframe.appendTo 'body'
-      isChanged = ->
-        iframe.remove()
-        assert.equal global.changedByIframe, true
+  describe 'window.opener', ->
+    ipc = remote.require 'ipc'
+    url = "file://#{fixtures}/pages/window-opener.html"
+    w = null
+
+    afterEach ->
+      w?.destroy()
+      ipc.removeAllListeners 'opener'
+
+    it 'is null for main window', (done) ->
+      ipc.on 'opener', (event, opener) ->
+        done(if opener is null then undefined else opener)
+      BrowserWindow = remote.require 'browser-window'
+      w = new BrowserWindow(show: false)
+      w.loadUrl url
+
+    it 'is not null for window opened by window.open', (done) ->
+      b = window.open url, '', 'show=no'
+      ipc.on 'opener', (event, opener) ->
+        b.close()
+        done(if opener isnt null then undefined else opener)
+
+  describe 'window.opener.postMessage', ->
+    it 'sets source and origin correctly', (done) ->
+      listener = (event) ->
+        window.removeEventListener 'message', listener
+        b.close()
+        assert.equal event.source.guestId, b.guestId
+        assert.equal event.origin, 'file://'
         done()
-      setTimeout isChanged, 30
+      window.addEventListener 'message', listener
+      b = window.open "file://#{fixtures}/pages/window-opener-postMessage.html", '', 'show=no'
 
   describe 'creating a Uint8Array under browser side', ->
     it 'does not crash', ->
-      RUint8Array = require('remote').getGlobal 'Uint8Array'
+      RUint8Array = remote.getGlobal 'Uint8Array'
       new RUint8Array
 
   describe 'webgl', ->
@@ -93,3 +111,76 @@ describe 'chromium feature', ->
         assert.equal event.data, message
         done()
       worker.port.postMessage message
+
+  describe 'iframe', ->
+    iframe = null
+
+    beforeEach ->
+      iframe = document.createElement 'iframe'
+
+    afterEach ->
+      document.body.removeChild iframe
+
+    it 'does not have node integration', (done) ->
+      iframe.src = "file://#{fixtures}/pages/set-global.html"
+      document.body.appendChild iframe
+      iframe.onload = ->
+        assert.equal iframe.contentWindow.test, 'undefined undefined undefined'
+        done()
+
+  describe 'storage', ->
+    it 'requesting persitent quota works', (done) ->
+      navigator.webkitPersistentStorage.requestQuota 1024 * 1024, (grantedBytes) ->
+        assert.equal grantedBytes, 1048576
+        done()
+
+  describe 'websockets', ->
+    wss = null
+    server = null
+    WebSocketServer = ws.Server
+
+    afterEach ->
+      wss.close()
+      server.close()
+
+    it 'has user agent', (done) ->
+      server = http.createServer()
+      server.listen 0, '127.0.0.1', ->
+        port = server.address().port
+        wss = new WebSocketServer(server: server)
+        wss.on 'error', done
+        wss.on 'connection', (ws) ->
+          if ws.upgradeReq.headers['user-agent']
+            done()
+          else
+            done('user agent is empty')
+        websocket = new WebSocket("ws://127.0.0.1:#{port}")
+
+  describe 'Promise', ->
+    it 'resolves correctly in Node.js calls', (done) ->
+      document.registerElement('x-element', {
+        prototype: Object.create(HTMLElement.prototype, {
+          createdCallback: { value: -> }
+        })
+      })
+
+      setImmediate ->
+        called = false
+        Promise.resolve().then ->
+          done(if called then undefined else new Error('wrong sequnce'))
+        document.createElement 'x-element'
+        called = true
+
+    it 'resolves correctly in Electron calls', (done) ->
+      document.registerElement('y-element', {
+        prototype: Object.create(HTMLElement.prototype, {
+          createdCallback: { value: -> }
+        })
+      })
+
+      remote.getGlobal('setImmediate') ->
+        called = false
+        Promise.resolve().then ->
+          done(if called then undefined else new Error('wrong sequnce'))
+        document.createElement 'y-element'
+        called = true

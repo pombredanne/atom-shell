@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -10,12 +10,26 @@
 
 @implementation AtomApplicationDelegate
 
+- (id)init {
+  self = [super init];
+  menu_controller_.reset([[AtomMenuController alloc] init]);
+  return self;
+}
+
+- (void)setApplicationDockMenu:(ui::MenuModel*)model {
+  [menu_controller_ populateWithModel:model];
+}
+
 - (void)applicationWillFinishLaunching:(NSNotification*)notify {
   atom::Browser::Get()->WillFinishLaunching();
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notify {
   atom::Browser::Get()->DidFinishLaunching();
+}
+
+- (NSMenu*)applicationDockMenu:(NSApplication*)sender {
+  return [menu_controller_ menu];
 }
 
 - (BOOL)application:(NSApplication*)sender

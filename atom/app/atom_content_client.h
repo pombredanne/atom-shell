@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -19,10 +19,12 @@ class AtomContentClient : public brightray::ContentClient {
 
  protected:
   // content::ContentClient:
-  virtual std::string GetProduct() const OVERRIDE;
-  virtual void AddAdditionalSchemes(
+  std::string GetProduct() const override;
+  void AddAdditionalSchemes(
       std::vector<std::string>* standard_schemes,
-      std::vector<std::string>* savable_schemes) OVERRIDE;
+      std::vector<std::string>* savable_schemes) override;
+  void AddPepperPlugins(
+      std::vector<content::PepperPluginInfo>* plugins) override;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(AtomContentClient);

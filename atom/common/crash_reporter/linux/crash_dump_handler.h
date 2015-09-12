@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Copyright (c) 2013 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
@@ -32,6 +32,10 @@ struct BreakpadInfo {
 void HandleCrashDump(const BreakpadInfo& info);
 
 size_t WriteLog(const char* buf, size_t nbytes);
+size_t WriteNewline();
+
+// Global variable storing the path of upload log.
+extern char g_crash_log_path[256];
 
 }  // namespace crash_reporter
 

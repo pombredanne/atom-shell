@@ -1,50 +1,72 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
 #ifndef ATOM_BROWSER_ATOM_BROWSER_CLIENT_H_
 #define ATOM_BROWSER_ATOM_BROWSER_CLIENT_H_
 
+#include <map>
 #include <string>
+#include <vector>
 
 #include "brightray/browser/browser_client.h"
+#include "content/public/browser/render_process_host_observer.h"
+
+namespace content {
+class QuotaPermissionContext;
+class ClientCertificateDelegate;
+}
+
+namespace net {
+class SSLCertRequestInfo;
+}
 
 namespace atom {
 
-class AtomResourceDispatcherHostDelegate;
-
-class AtomBrowserClient : public brightray::BrowserClient {
+class AtomBrowserClient : public brightray::BrowserClient,
+                          public content::RenderProcessHostObserver {
  public:
   AtomBrowserClient();
   virtual ~AtomBrowserClient();
 
+  // Don't force renderer process to restart for once.
+  static void SuppressRendererProcessRestartForOnce();
+  // Custom schemes to be registered to standard.
+  static void SetCustomSchemes(const std::vector<std::string>& schemes);
+
  protected:
   // content::ContentBrowserClient:
-  virtual void RenderProcessWillLaunch(
-      content::RenderProcessHost* host) OVERRIDE;
-  virtual void ResourceDispatcherHostCreated() OVERRIDE;
-  virtual content::SpeechRecognitionManagerDelegate*
-      GetSpeechRecognitionManagerDelegate() override;
-  virtual content::AccessTokenStore* CreateAccessTokenStore() OVERRIDE;
-  virtual void OverrideWebkitPrefs(content::RenderViewHost* render_view_host,
-                                   const GURL& url,
-                                   content::WebPreferences* prefs) OVERRIDE;
-  virtual bool ShouldSwapBrowsingInstancesForNavigation(
-      content::SiteInstance* site_instance,
-      const GURL& current_url,
-      const GURL& new_url) OVERRIDE;
-  virtual std::string GetApplicationLocale() OVERRIDE;
-  virtual void AppendExtraCommandLineSwitches(base::CommandLine* command_line,
-                                              int child_process_id) OVERRIDE;
+  void RenderProcessWillLaunch(content::RenderProcessHost* host) override;
+  content::SpeechRecognitionManagerDelegate*
+      CreateSpeechRecognitionManagerDelegate() override;
+  content::AccessTokenStore* CreateAccessTokenStore() override;
+  void OverrideWebkitPrefs(content::RenderViewHost* render_view_host,
+                           content::WebPreferences* prefs) override;
+  std::string GetApplicationLocale() override;
+  void OverrideSiteInstanceForNavigation(
+      content::BrowserContext* browser_context,
+      content::SiteInstance* current_instance,
+      const GURL& dest_url,
+      content::SiteInstance** new_instance) override;
+  void AppendExtraCommandLineSwitches(base::CommandLine* command_line,
+                                      int child_process_id) override;
+  void DidCreatePpapiPlugin(content::BrowserPpapiHost* browser_host) override;
+  content::QuotaPermissionContext* CreateQuotaPermissionContext() override;
+  void SelectClientCertificate(
+      content::WebContents* web_contents,
+      net::SSLCertRequestInfo* cert_request_info,
+      scoped_ptr<content::ClientCertificateDelegate> delegate) override;
+
+  // brightray::BrowserClient:
+  brightray::BrowserMainParts* OverrideCreateBrowserMainParts(
+      const content::MainFunctionParams&) override;
+
+  // content::RenderProcessHostObserver:
+  void RenderProcessHostDestroyed(content::RenderProcessHost* host) override;
 
  private:
-  virtual brightray::BrowserMainParts* OverrideCreateBrowserMainParts(
-      const content::MainFunctionParams&) OVERRIDE;
-
-  scoped_ptr<AtomResourceDispatcherHostDelegate> resource_dispatcher_delegate_;
-
-  // The render process which would be swapped out soon.
-  content::RenderProcessHost* dying_render_process_;
+  // pending_render_process => current_render_process.
+  std::map<int, int> pending_processes_;
 
   DISALLOW_COPY_AND_ASSIGN(AtomBrowserClient);
 };

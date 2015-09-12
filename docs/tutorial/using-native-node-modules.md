@@ -1,71 +1,62 @@
-# Using native Node modules
+# Using Native Node Modules
 
-The native Node modules are supported by atom-shell, but since atom-shell is
-using a different V8 version from official Node, you need to use `apm` instead
-of `npm` to install Node modules.
+The native Node modules are supported by Electron, but since Electron is
+using a different V8 version from official Node, you have to manually specify
+the location of Electron's headers when building native modules.
 
-The usage of [apm](https://github.com/atom/apm) is quite similar to `npm`, to
-install dependencies from `package.json` of current project, just do:
-
-```bash
-$ cd /path/to/atom-shell/project/
-$ apm install .
-```
-
-But you should notice that `apm install module` won't work because it will
-install a user package for [Atom Editor](https://github.com/atom/atom) instead.
-
-## Which version of apm to use
-
-Generally using the latest release of `apm` for latest atom-shell always works,
-but if you are uncertain of the which version of `apm` to use, you may manually
-instruct `apm` to use headers of a specified version of atom-shell by setting
-the `ATOM_NODE_VERSION` environment.
-
-For example force installing modules for atom-shell v0.16.0:
-
-```bash
-$ export ATOM_NODE_VERSION=0.16.0
-$ apm install .
-```
-
-## Native Node module compatibility
+## Native Node Module Compatibility
 
 Since Node v0.11.x there were vital changes in the V8 API. So generally all
-native modules written for Node v0.10.x wouldn't work for Node v0.11.x. And
-because atom-shell internally uses Node v0.11.13, it carries with the same
-problem.
+native modules written for Node v0.10.x won't work for newer Node or io.js
+versions. And because Electron internally uses __io.js v3.1.0__, it has the
+same problem.
 
-To solve this, you should use modules that support Node v0.11.x,
+To solve this, you should use modules that support Node v0.11.x or later,
 [many modules](https://www.npmjs.org/browse/depended/nan) do support both now.
 For old modules that only support Node v0.10.x, you should use the
-[nan](https://github.com/rvagg/nan) module to port it to v0.11.x.
+[nan](https://github.com/rvagg/nan) module to port it to v0.11.x or later
+versions of Node or io.js.
 
-## Other ways of installing native modules
+## How to Install Native Modules
 
-Apart from `apm`, you can also use `node-gyp` and `npm` to manually build the
-native modules.
+Three ways to install native modules:
 
-### The node-gyp way
+### The Easy Way
 
-To build Node modules with headers of atom-shell, you need to tell `node-gyp`
+The most straightforward way to rebuild native modules is via the
+[`electron-rebuild`](https://github.com/paulcbetts/electron-rebuild) package,
+which handles the manual steps of downloading headers and building native modules:
+
+```sh
+npm install --save-dev electron-rebuild
+
+# Every time you run npm install, run this
+node ./node_modules/.bin/electron-rebuild
+```
+
+### The node-gyp Way
+
+To build Node modules with headers of Electron, you need to tell `node-gyp`
 where to download headers and which version to use:
 
 ```bash
 $ cd /path-to-module/
-$ HOME=~/.atom-shell-gyp node-gyp rebuild --target=0.16.0 --arch=ia32 --dist-url=https://gh-contractor-zcbenz.s3.amazonaws.com/atom-shell/dist
+$ HOME=~/.electron-gyp node-gyp rebuild --target=0.29.1 --arch=x64 --dist-url=https://atom.io/download/atom-shell
 ```
 
-The `HOME=~/.atom-shell-gyp` changes where to find development headers. The
-`--target=0.16.0` is version of atom-shell. The `--dist-url=...` specifies
-where to download the headers. The `--arch=ia32` says the module is built for
-32bit system.
+The `HOME=~/.electron-gyp` changes where to find development headers. The
+`--target=0.29.1` is version of Electron. The `--dist-url=...` specifies
+where to download the headers. The `--arch=x64` says the module is built for
+64bit system.
 
-### The npm way
+### The npm Way
+
+You can also use `npm` to install modules. The steps are exactly the same with
+Node modules, except that you need to setup some environment variables:
 
 ```bash
-export npm_config_disturl=https://gh-contractor-zcbenz.s3.amazonaws.com/atom-shell/dist
-export npm_config_target=0.6.0
-export npm_config_arch=ia32
-HOME=~/.atom-shell-gyp npm install module-name
+export npm_config_disturl=https://atom.io/download/atom-shell
+export npm_config_target=0.29.1
+export npm_config_arch=x64
+HOME=~/.electron-gyp npm install module-name
 ```

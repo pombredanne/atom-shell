@@ -1,29 +1,29 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
 #ifndef ATOM_BROWSER_NET_URL_REQUEST_STRING_JOB_H_
 #define ATOM_BROWSER_NET_URL_REQUEST_STRING_JOB_H_
 
-#include "net/url_request/url_request_simple_job.h"
-
 #include <string>
+
+#include "atom/browser/net/js_asker.h"
+#include "net/url_request/url_request_simple_job.h"
 
 namespace atom {
 
-class URLRequestStringJob : public net::URLRequestSimpleJob {
+class URLRequestStringJob : public JsAsker<net::URLRequestSimpleJob> {
  public:
-  URLRequestStringJob(net::URLRequest* request,
-                      net::NetworkDelegate* network_delegate,
-                      const std::string& mime_type,
-                      const std::string& charset,
-                      const std::string& data);
+  URLRequestStringJob(net::URLRequest*, net::NetworkDelegate*);
+
+  // JsAsker:
+  void StartAsync(scoped_ptr<base::Value> options) override;
 
   // URLRequestSimpleJob:
-  virtual int GetData(std::string* mime_type,
-                      std::string* charset,
-                      std::string* data,
-                      const net::CompletionCallback& callback) const OVERRIDE;
+  int GetData(std::string* mime_type,
+              std::string* charset,
+              std::string* data,
+              const net::CompletionCallback& callback) const override;
 
  private:
   std::string mime_type_;

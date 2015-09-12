@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,10 @@
 #define ATOM_COMMON_ASAR_SCOPED_TEMPORARY_FILE_H_
 
 #include "base/files/file_path.h"
+
+namespace base {
+class File;
+}
 
 namespace asar {
 
@@ -22,7 +26,7 @@ class ScopedTemporaryFile {
   bool Init();
 
   // Init an temporary file and fill it with content of |path|.
-  bool InitFromFile(const base::FilePath& path, uint64 offset, uint64 size);
+  bool InitFromFile(base::File* src, uint64 offset, uint64 size);
 
   base::FilePath path() const { return path_; }
 

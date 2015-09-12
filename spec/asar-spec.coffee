@@ -1,6 +1,7 @@
-assert = require 'assert'
-fs     = require 'fs'
-path   = require 'path'
+assert        = require 'assert'
+child_process = require 'child_process'
+fs            = require 'fs'
+path          = require 'path'
 
 describe 'asar package', ->
   fixtures = path.join __dirname, 'fixtures'
@@ -9,47 +10,72 @@ describe 'asar package', ->
     describe 'fs.readFileSync', ->
       it 'reads a normal file', ->
         file1 = path.join fixtures, 'asar', 'a.asar', 'file1'
-        assert.equal fs.readFileSync(file1).toString(), 'file1\n'
+        assert.equal fs.readFileSync(file1).toString().trim(), 'file1'
         file2 = path.join fixtures, 'asar', 'a.asar', 'file2'
-        assert.equal fs.readFileSync(file2).toString(), 'file2\n'
+        assert.equal fs.readFileSync(file2).toString().trim(), 'file2'
         file3 = path.join fixtures, 'asar', 'a.asar', 'file3'
-        assert.equal fs.readFileSync(file3).toString(), 'file3\n'
+        assert.equal fs.readFileSync(file3).toString().trim(), 'file3'
+
+      it 'reads from a empty file', ->
+        file = path.join fixtures, 'asar', 'empty.asar', 'file1'
+        buffer = fs.readFileSync(file)
+        assert.equal buffer.length, 0
+        assert.equal buffer.toString(), ''
 
       it 'reads a linked file', ->
         p = path.join fixtures, 'asar', 'a.asar', 'link1'
-        assert.equal fs.readFileSync(p).toString(), 'file1\n'
+        assert.equal fs.readFileSync(p).toString().trim(), 'file1'
 
       it 'reads a file from linked directory', ->
         p = path.join fixtures, 'asar', 'a.asar', 'link2', 'file1'
-        assert.equal fs.readFileSync(p).toString(), 'file1\n'
+        assert.equal fs.readFileSync(p).toString().trim(), 'file1'
         p = path.join fixtures, 'asar', 'a.asar', 'link2', 'link2', 'file1'
-        assert.equal fs.readFileSync(p).toString(), 'file1\n'
+        assert.equal fs.readFileSync(p).toString().trim(), 'file1'
 
       it 'throws ENOENT error when can not find file', ->
         p = path.join fixtures, 'asar', 'a.asar', 'not-exist'
         throws = -> fs.readFileSync p
         assert.throws throws, /ENOENT/
 
+      it 'passes ENOENT error to callback when can not find file', ->
+        p = path.join fixtures, 'asar', 'a.asar', 'not-exist'
+        async = false
+        fs.readFile p, (e) ->
+          assert async
+          assert /ENOENT/.test e
+        async = true
+
+      it 'reads a normal file with unpacked files', ->
+        p = path.join fixtures, 'asar', 'unpack.asar', 'a.txt'
+        assert.equal fs.readFileSync(p).toString().trim(), 'a'
+
     describe 'fs.readFile', ->
       it 'reads a normal file', (done) ->
         p = path.join fixtures, 'asar', 'a.asar', 'file1'
         fs.readFile p, (err, content) ->
           assert.equal err, null
-          assert.equal String(content), 'file1\n'
+          assert.equal String(content).trim(), 'file1'
+          done()
+
+      it 'reads from a empty file', (done) ->
+        p = path.join fixtures, 'asar', 'empty.asar', 'file1'
+        fs.readFile p, (err, content) ->
+          assert.equal err, null
+          assert.equal String(content), ''
           done()
 
       it 'reads a linked file', (done) ->
         p = path.join fixtures, 'asar', 'a.asar', 'link1'
         fs.readFile p, (err, content) ->
           assert.equal err, null
-          assert.equal String(content), 'file1\n'
+          assert.equal String(content).trim(), 'file1'
           done()
 
       it 'reads a file from linked directory', (done) ->
         p = path.join fixtures, 'asar', 'a.asar', 'link2', 'link2', 'file1'
         fs.readFile p, (err, content) ->
           assert.equal err, null
-          assert.equal String(content), 'file1\n'
+          assert.equal String(content).trim(), 'file1'
           done()
 
       it 'throws ENOENT error when can not find file', (done) ->
@@ -59,6 +85,11 @@ describe 'asar package', ->
           done()
 
     describe 'fs.lstatSync', ->
+      it 'handles path with trailing slash correctly', ->
+        p = path.join fixtures, 'asar', 'a.asar', 'link2', 'link2', 'file1'
+        fs.lstatSync p
+        fs.lstatSync p + '/'
+
       it 'returns information of root', ->
         p = path.join fixtures, 'asar', 'a.asar'
         stats = fs.lstatSync p
@@ -110,6 +141,10 @@ describe 'asar package', ->
           assert.throws throws, /ENOENT/
 
     describe 'fs.lstat', ->
+      it 'handles path with trailing slash correctly', (done) ->
+        p = path.join fixtures, 'asar', 'a.asar', 'link2', 'link2', 'file1'
+        fs.lstat p + '/', done
+
       it 'returns information of root', (done) ->
         p = path.join fixtures, 'asar', 'a.asar'
         stats = fs.lstat p, (err, stats) ->
@@ -307,7 +342,7 @@ describe 'asar package', ->
           fd = fs.openSync p, 'r'
           buffer = new Buffer(6)
           fs.readSync fd, buffer, 0, 6, 0
-          assert.equal String(buffer), 'file1\n'
+          assert.equal String(buffer).trim(), 'file1'
           fs.closeSync fd
 
       it 'throws ENOENT error when can not find file', ->
@@ -323,12 +358,12 @@ describe 'asar package', ->
           buffer = new Buffer(6)
           fs.read fd, buffer, 0, 6, 0, (err) ->
             assert.equal err, null
-            assert.equal String(buffer), 'file1\n'
+            assert.equal String(buffer).trim(), 'file1'
             fs.close fd, done
 
       it 'throws ENOENT error when can not find file', (done) ->
         p = path.join fixtures, 'asar', 'a.asar', 'not-exist'
-        fs.open p, (err, stats) ->
+        fs.open p, 'r', (err, stats) ->
           assert.equal err.code, 'ENOENT'
           done()
 
@@ -342,53 +377,125 @@ describe 'asar package', ->
           done()
         child.send 'message'
 
-      it 'throws ENOENT error when can not find file', ->
-        p = path.join fixtures, 'asar', 'a.asar', 'not-exist'
-        throws = -> child_process.fork p
-        assert.throws throws, /ENOENT/
+      it 'supports asar in the forked js', (done) ->
+        file = path.join fixtures, 'asar', 'a.asar', 'file1'
+        child = child_process.fork path.join(fixtures, 'module', 'asar.js')
+        child.on 'message', (content) ->
+          assert.equal content, fs.readFileSync(file).toString()
+          done()
+        child.send file
+
+    describe 'internalModuleReadFile', ->
+      internalModuleReadFile = process.binding('fs').internalModuleReadFile
+
+      it 'read a normal file', ->
+        file1 = path.join fixtures, 'asar', 'a.asar', 'file1'
+        assert.equal internalModuleReadFile(file1).toString().trim(), 'file1'
+        file2 = path.join fixtures, 'asar', 'a.asar', 'file2'
+        assert.equal internalModuleReadFile(file2).toString().trim(), 'file2'
+        file3 = path.join fixtures, 'asar', 'a.asar', 'file3'
+        assert.equal internalModuleReadFile(file3).toString().trim(), 'file3'
+
+      it 'reads a normal file with unpacked files', ->
+        p = path.join fixtures, 'asar', 'unpack.asar', 'a.txt'
+        assert.equal internalModuleReadFile(p).toString().trim(), 'a'
 
   describe 'asar protocol', ->
+    url = require 'url'
+    remote = require 'remote'
+    ipc = remote.require 'ipc'
+    BrowserWindow = remote.require 'browser-window'
+
     it 'can request a file in package', (done) ->
       p = path.resolve fixtures, 'asar', 'a.asar', 'file1'
-      $.get "asar:#{p}", (data) ->
-        assert.equal data, 'file1\n'
+      $.get "file://#{p}", (data) ->
+        assert.equal data.trim(), 'file1'
+        done()
+
+    it 'can request a file in package with unpacked files', (done) ->
+      p = path.resolve fixtures, 'asar', 'unpack.asar', 'a.txt'
+      $.get "file://#{p}", (data) ->
+        assert.equal data.trim(), 'a'
         done()
 
     it 'can request a linked file in package', (done) ->
       p = path.resolve fixtures, 'asar', 'a.asar', 'link2', 'link1'
-      $.get "asar:#{p}", (data) ->
-        assert.equal data, 'file1\n'
+      $.get "file://#{p}", (data) ->
+        assert.equal data.trim(), 'file1'
         done()
 
     it 'can request a file in filesystem', (done) ->
       p = path.resolve fixtures, 'asar', 'file'
-      $.get "asar:#{p}", (data) ->
-        assert.equal data, 'file\n'
+      $.get "file://#{p}", (data) ->
+        assert.equal data.trim(), 'file'
         done()
 
     it 'gets 404 when file is not found', (done) ->
       p = path.resolve fixtures, 'asar', 'a.asar', 'no-exist'
       $.ajax
-        url: "asar:#{p}"
+        url: "file://#{p}"
         error: (err) ->
           assert.equal err.status, 404
           done()
 
     it 'sets __dirname correctly', (done) ->
-      url = require 'url'
-      remote = require 'remote'
-      ipc = remote.require 'ipc'
-      BrowserWindow = remote.require 'browser-window'
-
       after ->
         w.destroy()
         ipc.removeAllListeners 'dirname'
 
       w = new BrowserWindow(show: false, width: 400, height: 400)
       p = path.resolve fixtures, 'asar', 'web.asar', 'index.html'
-      u = url.format protocol: 'asar', slashed: false, pathname: p
-      console.log u
+      u = url.format protocol: 'file', slashed: true, pathname: p
       w.loadUrl u
-      ipc.on 'dirname', (event, dirname) ->
+      ipc.once 'dirname', (event, dirname) ->
         assert.equal dirname, path.dirname(p)
         done()
+
+    it 'loads script tag in html', (done) ->
+      after ->
+        w.destroy()
+        ipc.removeAllListeners 'ping'
+
+      w = new BrowserWindow(show: false, width: 400, height: 400)
+      p = path.resolve fixtures, 'asar', 'script.asar', 'index.html'
+      u = url.format protocol: 'file', slashed: true, pathname: p
+      w.loadUrl u
+      ipc.once 'ping', (event, message) ->
+        assert.equal message, 'pong'
+        done()
+
+  describe 'original-fs module', ->
+    originalFs = require 'original-fs'
+
+    it 'treats .asar as file', ->
+      file = path.join fixtures, 'asar', 'a.asar'
+      stats = originalFs.statSync file
+      assert stats.isFile()
+
+    it 'is available in forked scripts', (done) ->
+      child = child_process.fork path.join(fixtures, 'module', 'original-fs.js')
+      child.on 'message', (msg) ->
+        assert.equal msg, 'object'
+        done()
+      child.send 'message'
+
+  describe 'graceful-fs module', ->
+    gfs = require 'graceful-fs'
+
+    it 'recognize asar archvies', ->
+      p = path.join fixtures, 'asar', 'a.asar', 'link1'
+      assert.equal gfs.readFileSync(p).toString().trim(), 'file1'
+
+    it 'does not touch global fs object', ->
+      assert.notEqual fs.readdir, gfs.readdir
+
+  describe 'native-image', ->
+    it 'reads image from asar archive', ->
+      p = path.join fixtures, 'asar', 'logo.asar', 'logo.png'
+      logo = require('native-image').createFromPath p
+      assert.deepEqual logo.getSize(), {width: 55, height: 55}
+
+    it 'reads image from asar archive with unpacked files', ->
+      p = path.join fixtures, 'asar', 'unpack.asar', 'atom.png'
+      logo = require('native-image').createFromPath p
+      assert.deepEqual logo.getSize(), {width: 1024, height: 1024}

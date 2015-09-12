@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
@@ -39,6 +39,9 @@ class MenuModel;
 // to the contents of the model after calling this will not be noticed.
 - (id)initWithModel:(ui::MenuModel*)model;
 
+// Populate current NSMenu with |model|.
+- (void)populateWithModel:(ui::MenuModel*)model;
+
 // Programmatically close the constructed menu.
 - (void)cancel;
 
@@ -54,19 +57,6 @@ class MenuModel;
 - (void)menuWillOpen:(NSMenu*)menu;
 - (void)menuDidClose:(NSMenu*)menu;
 
-@end
-
-// Exposed only for unit testing, do not call directly.
-@interface AtomMenuController (PrivateExposedForTesting)
-- (BOOL)validateUserInterfaceItem:(id<NSValidatedUserInterfaceItem>)item;
-@end
-
-// Protected methods that subclassers can override.
-@interface AtomMenuController (Protected)
-- (void)addItemToMenu:(NSMenu*)menu
-              atIndex:(NSInteger)index
-            fromModel:(ui::MenuModel*)model;
-- (NSMenu*)menuFromModel:(ui::MenuModel*)model;
 @end
 
 #endif  // ATOM_BROWSER_UI_COCOA_ATOM_MENU_CONTROLLER_H_

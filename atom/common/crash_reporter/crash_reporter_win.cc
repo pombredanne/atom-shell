@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <string>
 
-#include "base/file_util.h"
+#include "base/files/file_util.h"
 #include "base/logging.h"
 #include "base/memory/singleton.h"
 #include "base/strings/string_util.h"
@@ -21,6 +21,7 @@ const MINIDUMP_TYPE kSmallDumpType = static_cast<MINIDUMP_TYPE>(
     MiniDumpWithProcessThreadData |  // Get PEB and TEB.
     MiniDumpWithUnloadedModules);  // Get unloaded modules when available.
 
+const wchar_t kWaitEventFormat[] = L"$1CrashServiceWaitEvent";
 const wchar_t kPipeNameFormat[] = L"\\\\.\\pipe\\$1 Crash Service";
 
 }  // namespace
@@ -47,12 +48,20 @@ void CrashReporterWin::InitBreakpad(const std::string& product_name,
 
   base::string16 pipe_name = ReplaceStringPlaceholders(
       kPipeNameFormat, base::UTF8ToUTF16(product_name), NULL);
+  base::string16 wait_name = ReplaceStringPlaceholders(
+      kWaitEventFormat, base::UTF8ToUTF16(product_name), NULL);
 
   // Wait until the crash service is started.
-  HANDLE waiting_event =
-      ::CreateEventW(NULL, TRUE, FALSE, L"g_atom_shell_crash_service");
-  if (waiting_event != INVALID_HANDLE_VALUE)
-    WaitForSingleObject(waiting_event, 1000);
+  HANDLE wait_event = ::CreateEventW(NULL, TRUE, FALSE, wait_name.c_str());
+  if (wait_event != NULL) {
+    WaitForSingleObject(wait_event, 1000);
+    CloseHandle(wait_event);
+  }
+
+  // ExceptionHandler() attaches our handler and ~ExceptionHandler() detaches
+  // it, so we must explicitly reset *before* we instantiate our new handler
+  // to allow any previous handler to detach in the correct order.
+  breakpad_.reset();
 
   int handler_types = google_breakpad::ExceptionHandler::HANDLER_EXCEPTION |
       google_breakpad::ExceptionHandler::HANDLER_PURECALL;
@@ -103,7 +112,7 @@ google_breakpad::CustomClientInfo* CrashReporterWin::GetCustomInfo(
   custom_info_entries_.reserve(2 + upload_parameters_.size());
 
   custom_info_entries_.push_back(google_breakpad::CustomInfoEntry(
-      L"prod", L"Atom-Shell"));
+      L"prod", L"Electron"));
   custom_info_entries_.push_back(google_breakpad::CustomInfoEntry(
       L"ver", base::UTF8ToWide(version).c_str()));
 

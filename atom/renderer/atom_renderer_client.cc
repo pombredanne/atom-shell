@@ -1,40 +1,39 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
 #include "atom/renderer/atom_renderer_client.h"
 
-#include <algorithm>
 #include <string>
 
+#include "atom/common/api/atom_bindings.h"
 #include "atom/common/node_bindings.h"
+#include "atom/common/node_includes.h"
 #include "atom/common/options_switches.h"
-#include "atom/renderer/api/atom_renderer_bindings.h"
 #include "atom/renderer/atom_render_view_observer.h"
+#include "atom/renderer/guest_view_container.h"
+#include "atom/renderer/node_array_buffer_bridge.h"
+#include "base/command_line.h"
+#include "chrome/renderer/pepper/pepper_helper.h"
 #include "chrome/renderer/printing/print_web_view_helper.h"
 #include "chrome/renderer/tts_dispatcher.h"
+#include "content/public/common/content_constants.h"
 #include "content/public/renderer/render_frame.h"
 #include "content/public/renderer/render_frame_observer.h"
 #include "content/public/renderer/render_thread.h"
-#include "base/command_line.h"
-#include "native_mate/converter.h"
-#include "third_party/WebKit/public/web/WebDocument.h"
-#include "third_party/WebKit/public/web/WebFrame.h"
+#include "third_party/WebKit/public/web/WebCustomElement.h"
+#include "third_party/WebKit/public/web/WebLocalFrame.h"
+#include "third_party/WebKit/public/web/WebPluginParams.h"
 #include "third_party/WebKit/public/web/WebKit.h"
 #include "third_party/WebKit/public/web/WebRuntimeFeatures.h"
 
-#include "atom/common/node_includes.h"
+#if defined(OS_WIN)
+#include <shlobj.h>
+#endif
 
 namespace atom {
 
 namespace {
-
-// Security tokens.
-const char* kSecurityAll = "all";
-const char* kSecurityExceptIframe = "except-iframe";
-const char* kSecurityManualEnableIframe = "manual-enable-iframe";
-const char* kSecurityDisable = "disable";
-const char* kSecurityEnableNodeIntegration = "enable-node-integration";
 
 bool IsSwitchEnabled(base::CommandLine* command_line,
                      const char* switch_string,
@@ -49,7 +48,7 @@ bool IsSwitchEnabled(base::CommandLine* command_line,
   return true;
 }
 
-// Helper class to forward the WillReleaseScriptContext message to the client.
+// Helper class to forward the messages to the client.
 class AtomRenderFrameObserver : public content::RenderFrameObserver {
  public:
   AtomRenderFrameObserver(content::RenderFrame* frame,
@@ -58,10 +57,11 @@ class AtomRenderFrameObserver : public content::RenderFrameObserver {
         renderer_client_(renderer_client) {}
 
   // content::RenderFrameObserver:
-  virtual void WillReleaseScriptContext(v8::Handle<v8::Context> context,
-                                        int world_id) OVERRIDE {
-    renderer_client_->WillReleaseScriptContext(
-        render_frame()->GetWebFrame(), context, world_id);
+  void DidCreateScriptContext(v8::Handle<v8::Context> context,
+                              int extension_group,
+                              int world_id) {
+    renderer_client_->DidCreateScriptContext(
+        render_frame()->GetWebFrame(), context);
   }
 
  private:
@@ -73,24 +73,8 @@ class AtomRenderFrameObserver : public content::RenderFrameObserver {
 }  // namespace
 
 AtomRendererClient::AtomRendererClient()
-    : node_integration_(EXCEPT_IFRAME),
-      main_frame_(NULL) {
-  // Translate the token.
-  std::string token = CommandLine::ForCurrentProcess()->
-      GetSwitchValueASCII(switches::kNodeIntegration);
-  if (token == kSecurityExceptIframe)
-    node_integration_ = EXCEPT_IFRAME;
-  else if (token == kSecurityManualEnableIframe)
-    node_integration_ = MANUAL_ENABLE_IFRAME;
-  else if (token == kSecurityDisable)
-    node_integration_ = DISABLE;
-  else if (token == kSecurityAll)
-    node_integration_ = ALL;
-
-  if (IsNodeBindingEnabled()) {
-    node_bindings_.reset(NodeBindings::Create(false));
-    atom_bindings_.reset(new AtomRendererBindings);
-  }
+    : node_bindings_(NodeBindings::Create(false)),
+      atom_bindings_(new AtomBindings) {
 }
 
 AtomRendererClient::~AtomRendererClient() {
@@ -99,8 +83,10 @@ AtomRendererClient::~AtomRendererClient() {
 void AtomRendererClient::WebKitInitialized() {
   EnableWebRuntimeFeatures();
 
-  if (!IsNodeBindingEnabled())
-    return;
+  blink::WebCustomElement::addEmbedderCustomElementName("webview");
+  blink::WebCustomElement::addEmbedderCustomElementName("browserplugin");
+
+  OverrideNodeArrayBuffer();
 
   node_bindings_->Initialize();
   node_bindings_->PrepareMessageLoop();
@@ -112,15 +98,25 @@ void AtomRendererClient::WebKitInitialized() {
   v8::Isolate* isolate = blink::mainThreadIsolate();
   v8::HandleScope handle_scope(isolate);
   v8::Local<v8::Context> context = v8::Context::New(isolate);
-  global_env = node::Environment::New(context);
+  global_env = node::Environment::New(context, uv_default_loop());
 }
 
 void AtomRendererClient::RenderThreadStarted() {
   content::RenderThread::Get()->AddObserver(this);
+
+#if defined(OS_WIN)
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  base::string16 app_id =
+      command_line->GetSwitchValueNative(switches::kAppUserModelId);
+  if (!app_id.empty()) {
+    SetCurrentProcessExplicitAppUserModelID(app_id.c_str());
+  }
+#endif
 }
 
 void AtomRendererClient::RenderFrameCreated(
     content::RenderFrame* render_frame) {
+  new PepperHelper(render_frame);
   new AtomRenderFrameObserver(render_frame, this);
 }
 
@@ -134,22 +130,25 @@ blink::WebSpeechSynthesizer* AtomRendererClient::OverrideSpeechSynthesizer(
   return new TtsDispatcher(client);
 }
 
-void AtomRendererClient::DidCreateScriptContext(blink::WebFrame* frame,
-                                                v8::Handle<v8::Context> context,
-                                                int extension_group,
-                                                int world_id) {
-  // The first web frame is the main frame.
-  if (main_frame_ == NULL)
-    main_frame_ = frame;
+bool AtomRendererClient::OverrideCreatePlugin(
+    content::RenderFrame* render_frame,
+    blink::WebLocalFrame* frame,
+    const blink::WebPluginParams& params,
+    blink::WebPlugin** plugin) {
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  if (params.mimeType.utf8() == content::kBrowserPluginMimeType ||
+      command_line->HasSwitch(switches::kEnablePlugins))
+    return false;
 
-  if (!IsNodeBindingEnabled(frame))
-    return;
+  *plugin = nullptr;
+  return true;
+}
 
-  v8::Context::Scope scope(context);
-
-  // Check the existance of process object to prevent duplicate initialization.
-  if (context->Global()->Has(
-        mate::StringToV8(context->GetIsolate(), "process")))
+void AtomRendererClient::DidCreateScriptContext(
+    blink::WebFrame* frame,
+    v8::Handle<v8::Context> context) {
+  // Only insert node integration for the main frame.
+  if (frame->parent())
     return;
 
   // Give the node loop a run to make sure everything is ready.
@@ -159,52 +158,17 @@ void AtomRendererClient::DidCreateScriptContext(blink::WebFrame* frame,
   node::Environment* env = node_bindings_->CreateEnvironment(context);
 
   // Add atom-shell extended APIs.
-  atom_bindings_->BindToFrame(frame);
-
-  // Store the created environment.
-  web_page_envs_.push_back(env);
+  atom_bindings_->BindTo(env->isolate(), env->process_object());
 
   // Make uv loop being wrapped by window context.
-  if (node_bindings_->uv_env() == NULL)
+  if (node_bindings_->uv_env() == nullptr)
     node_bindings_->set_uv_env(env);
+
+  // Load everything.
+  node_bindings_->LoadEnvironment(env);
 }
 
-void AtomRendererClient::WillReleaseScriptContext(
-    blink::WebFrame* frame,
-    v8::Handle<v8::Context> context,
-    int world_id) {
-  if (!IsNodeBindingEnabled(frame))
-    return;
-
-  node::Environment* env = node::Environment::GetCurrent(context);
-  if (env == NULL) {
-    LOG(ERROR) << "Encounter a non-node context when releasing script context";
-    return;
-  }
-
-  // Clear the environment.
-  web_page_envs_.erase(
-      std::remove(web_page_envs_.begin(), web_page_envs_.end(), env),
-      web_page_envs_.end());
-
-  // Notice that we are not disposing the environment object here, because there
-  // may still be pending uv operations in the uv loop, and when they got done
-  // they would be needing the original environment.
-  // So we are leaking the environment object here, just like Chrome leaking the
-  // memory :) . Since it's only leaked when refreshing or unloading, so as long
-  // as we make sure renderer process is restared then the memory would not be
-  // leaked.
-  // env->Dispose();
-
-  // Wrap the uv loop with another environment.
-  if (env == node_bindings_->uv_env()) {
-    node::Environment* env = web_page_envs_.size() > 0 ? web_page_envs_[0] :
-                                                         NULL;
-    node_bindings_->set_uv_env(env);
-  }
-}
-
-bool AtomRendererClient::ShouldFork(blink::WebFrame* frame,
+bool AtomRendererClient::ShouldFork(blink::WebLocalFrame* frame,
                                     const GURL& url,
                                     const std::string& http_method,
                                     bool is_initial_navigation,
@@ -214,28 +178,34 @@ bool AtomRendererClient::ShouldFork(blink::WebFrame* frame,
   // FIXME We only support GET here because http method will be ignored when
   // the OpenURLFromTab is triggered, which means form posting would not work,
   // we should solve this by patching Chromium in future.
+  *send_referrer = true;
   return http_method == "GET";
 }
 
-bool AtomRendererClient::IsNodeBindingEnabled(blink::WebFrame* frame) {
-  if (node_integration_ == DISABLE)
-    return false;
-  // Node integration is enabled in main frame unless explictly disabled.
-  else if (frame == main_frame_)
+content::BrowserPluginDelegate* AtomRendererClient::CreateBrowserPluginDelegate(
+    content::RenderFrame* render_frame,
+    const std::string& mime_type,
+    const GURL& original_url) {
+  if (mime_type == content::kBrowserPluginMimeType) {
+    return new GuestViewContainer(render_frame);
+  } else {
+    return nullptr;
+  }
+}
+
+bool AtomRendererClient::ShouldOverridePageVisibilityState(
+    const content::RenderFrame* render_frame,
+    blink::WebPageVisibilityState* override_state) {
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  bool b;
+
+  if (IsSwitchEnabled(command_line, switches::kPageVisibility, &b)
+      && b) {
+    *override_state = blink::WebPageVisibilityStateVisible;
     return true;
-  // Enable node integration in chrome extensions.
-  else if (frame != NULL &&
-           GURL(frame->document().url()).SchemeIs("chrome-extension"))
-    return true;
-  else if (node_integration_ == MANUAL_ENABLE_IFRAME &&
-           frame != NULL &&
-           frame->uniqueName().utf8().find(kSecurityEnableNodeIntegration)
-               == std::string::npos)
-    return false;
-  else if (node_integration_ == EXCEPT_IFRAME && frame != NULL)
-    return false;
-  else
-    return true;
+  }
+
+  return false;
 }
 
 void AtomRendererClient::EnableWebRuntimeFeatures() {

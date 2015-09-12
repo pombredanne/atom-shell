@@ -1,96 +1,99 @@
 fs     = require 'fs'
 path   = require 'path'
-module = require 'module'
 util   = require 'util'
-
-# Expose information of current process.
-process.type = 'browser'
-process.resourcesPath = path.resolve process.argv[1], '..', '..', '..', '..'
+Module = require 'module'
 
 # We modified the original process.argv to let node.js load the atom.js,
 # we need to restore it here.
 process.argv.splice 1, 1
 
-# Pick out switches appended by atom-shell.
-startMark = process.argv.indexOf '--atom-shell-switches-start'
-endMark = process.argv.indexOf '--atom-shell-switches-end'
-process.argv.splice startMark, endMark - startMark + 1
+# Add browser/api/lib to module search paths, which contains javascript part of
+# Electron's built-in libraries.
+globalPaths = Module.globalPaths
+globalPaths.push path.resolve(__dirname, '..', 'api', 'lib')
 
-# Add browser/api/lib to require's search paths,
-# which contains javascript part of Atom's built-in libraries.
-globalPaths = module.globalPaths
-globalPaths.push path.join process.resourcesPath, 'atom', 'browser', 'api', 'lib'
+# Import common settings.
+require path.resolve(__dirname, '..', '..', 'common', 'lib', 'init')
 
-# Do loading in next tick since we still need some initialize work before
-# native bindings can work.
-setImmediate ->
-  # Import common settings.
-  require path.resolve(__dirname, '..', '..', 'common', 'lib', 'init.js')
+if process.platform is 'win32'
+  # Redirect node's console to use our own implementations, since node can not
+  # handle console output when running as GUI program.
+  print = (args...) ->
+    process.log util.format(args...)
+  console.log = console.error = console.warn = print
+  process.stdout.write = process.stderr.write = print
 
-  if process.platform is 'win32'
-    # Redirect node's console to use our own implementations, since node can not
-    # handle console output when running as GUI program.
-    print = (args...) ->
-      process.log util.format(args...)
-    console.log = console.error = console.warn = print
-    process.stdout.write = process.stderr.write = print
+  # Always returns EOF for stdin stream.
+  Readable = require('stream').Readable
+  stdin = new Readable
+  stdin.push null
+  process.__defineGetter__ 'stdin', -> stdin
 
-    # Always returns EOF for stdin stream.
-    Readable = require('stream').Readable
-    stdin = new Readable
-    stdin.push null
-    process.__defineGetter__ 'stdin', -> stdin
+# Don't quit on fatal error.
+process.on 'uncaughtException', (error) ->
+  # Do nothing if the user has a custom uncaught exception handler.
+  if process.listeners('uncaughtException').length > 1
+    return
 
-  # Don't quit on fatal error.
-  process.on 'uncaughtException', (error) ->
-    # Show error in GUI.
-    message = error.stack ? "#{error.name}: #{error.message}"
-    require('dialog').showMessageBox
-      type: 'warning'
-      title: 'A javascript error occured in the browser'
-      message: 'uncaughtException'
-      detail: message
-      buttons: ['OK']
+  # Show error in GUI.
+  stack = error.stack ? "#{error.name}: #{error.message}"
+  message = "Uncaught Exception:\n#{stack}"
+  require('dialog').showErrorBox 'A JavaScript error occurred in the main process', message
 
-  # Emit 'exit' event on quit.
-  require('app').on 'quit', ->
-    process.emit 'exit'
+# Emit 'exit' event on quit.
+app = require 'app'
+app.on 'quit', ->
+  process.emit 'exit'
 
-  # Load the RPC server.
-  require './rpc-server.js'
+# Load the RPC server.
+require './rpc-server'
 
-  # Now we try to load app's package.json.
-  packageJson = null
+# Load the guest view manager.
+require './guest-view-manager'
+require './guest-window-manager'
 
-  searchPaths = [ 'app', 'app.asar', 'default_app' ]
-  for packagePath in searchPaths
-    try
-      packagePath = path.join process.resourcesPath, packagePath
-      packageJson = JSON.parse(fs.readFileSync(path.join(packagePath, 'package.json')))
-      break
-    catch e
-      continue
+# Now we try to load app's package.json.
+packageJson = null
 
-  throw new Error("Unable to find a valid app") unless packageJson?
+searchPaths = [ 'app', 'app.asar', 'default_app' ]
+for packagePath in searchPaths
+  try
+    packagePath = path.join process.resourcesPath, packagePath
+    packageJson = JSON.parse(fs.readFileSync(path.join(packagePath, 'package.json')))
+    break
+  catch e
+    continue
 
-  # Set application's version.
-  app = require 'app'
-  app.setVersion packageJson.version if packageJson.version?
+throw new Error("Unable to find a valid app") unless packageJson?
 
-  # Set application's name.
-  if packageJson.productName?
-    app.setName packageJson.productName
-  else if packageJson.name?
-    app.setName packageJson.name
+# Set application's version.
+app.setVersion packageJson.version if packageJson.version?
 
-  # Set application's desktop name.
-  if packageJson.desktopName?
-    app.setDesktopName packageJson.desktopName
-  else
-    app.setDesktopName '#{app.getName()}.desktop'
+# Set application's name.
+if packageJson.productName?
+  app.setName packageJson.productName
+else if packageJson.name?
+  app.setName packageJson.name
 
-  # Load the chrome extension support.
-  require './chrome-extension.js'
+# Set application's desktop name.
+if packageJson.desktopName?
+  app.setDesktopName packageJson.desktopName
+else
+  app.setDesktopName "#{app.getName()}.desktop"
 
-  # Finally load app's main.js and transfer control to C++.
-  module._load path.join(packagePath, packageJson.main), module, true
+# Chrome 42 disables NPAPI plugins by default, reenable them here
+app.commandLine.appendSwitch 'enable-npapi'
+
+# Set the user path according to application's name.
+app.setPath 'userData', path.join(app.getPath('appData'), app.getName())
+app.setPath 'userCache', path.join(app.getPath('cache'), app.getName())
+app.setAppPath packagePath
+
+# Load the chrome extension support.
+require './chrome-extension'
+
+# Set main startup script of the app.
+mainStartupScript = packageJson.main or 'index.js'
+
+# Finally load app's main.js and transfer control to C++.
+Module._load path.join(packagePath, mainStartupScript), Module, true

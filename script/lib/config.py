@@ -1,25 +1,62 @@
 #!/usr/bin/env python
 
+import errno
+import os
 import platform
 import sys
 
-BASE_URL = 'https://gh-contractor-zcbenz.s3.amazonaws.com/libchromiumcontent'
-LIBCHROMIUMCONTENT_COMMIT = '9f5271d31e0f32eac5a20ef6f543e3f1d43ad645'
 
-ARCH = {
-    'cygwin': '32bit',
-    'darwin': '64bit',
-    'linux2': platform.architecture()[0],
-    'win32': '32bit',
-}[sys.platform]
-DIST_ARCH = {
-    '32bit': 'ia32',
-    '64bit': 'x64',
-}[ARCH]
+BASE_URL = os.getenv('LIBCHROMIUMCONTENT_MIRROR') or \
+    'http://github-janky-artifacts.s3.amazonaws.com/libchromiumcontent'
+LIBCHROMIUMCONTENT_COMMIT = '8482fe555913dea3bde8a74f754524e2cfb02bc5'
 
-TARGET_PLATFORM = {
+PLATFORM = {
   'cygwin': 'win32',
   'darwin': 'darwin',
   'linux2': 'linux',
   'win32': 'win32',
 }[sys.platform]
+
+verbose_mode = False
+
+
+def get_target_arch():
+  try:
+    target_arch_path = os.path.join(__file__, '..', '..', '..', 'vendor',
+                                    'brightray', 'vendor', 'download',
+                                    'libchromiumcontent', '.target_arch')
+    with open(os.path.normpath(target_arch_path)) as f:
+      return f.read().strip()
+  except IOError as e:
+    if e.errno != errno.ENOENT:
+      raise
+
+  if PLATFORM == 'win32':
+    return 'ia32'
+  else:
+    return 'x64'
+
+
+def get_chromedriver_version():
+  return 'v2.15'
+
+
+def s3_config():
+  config = (os.environ.get('ATOM_SHELL_S3_BUCKET', ''),
+            os.environ.get('ATOM_SHELL_S3_ACCESS_KEY', ''),
+            os.environ.get('ATOM_SHELL_S3_SECRET_KEY', ''))
+  message = ('Error: Please set the $ATOM_SHELL_S3_BUCKET, '
+             '$ATOM_SHELL_S3_ACCESS_KEY, and '
+             '$ATOM_SHELL_S3_SECRET_KEY environment variables')
+  assert all(len(c) for c in config), message
+  return config
+
+
+def enable_verbose_mode():
+  print 'Running in verbose mode'
+  global verbose_mode
+  verbose_mode = True
+
+
+def is_verbose_mode():
+  return verbose_mode

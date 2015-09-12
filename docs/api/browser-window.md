@@ -1,7 +1,7 @@
-# browser-window
+# BrowserWindow
 
-The `BrowserWindow` class gives you ability to create a browser window, an
-example is:
+The `BrowserWindow` class gives you the ability to create a browser window. For
+example:
 
 ```javascript
 var BrowserWindow = require('browser-window');
@@ -18,82 +18,110 @@ win.show();
 You can also create a window without chrome by using
 [Frameless Window](frameless-window.md) API.
 
-Security strategy of web pages showed by `BrowserWindow` is a bit different from
-normal browsers, see [Web Security](web-security.md) for more.
-
 ## Class: BrowserWindow
 
 `BrowserWindow` is an
 [EventEmitter](http://nodejs.org/api/events.html#events_class_events_eventemitter).
 
-### new BrowserWindow(options)
+It creates a new `BrowserWindow` with native properties as set by the `options`.
+Properties `width` and `height` are required.
 
-* `options` Object
-  * `x` Integer - Window's left offset to screen
-  * `y` Integer - Window's top offset to screen
-  * `width` Integer - Window's width
-  * `height` Integer - Window's height
-  * `use-content-size` Boolean - The `width` and `height` would be used as web
-     page's size, which means the actual window's size will include window
-     frame's size and be slightly larger.
-  * `center` Boolean - Show window in the center of the screen
-  * `min-width` Integer - Minimum width
-  * `min-height` Integer - Minimum height
-  * `max-width` Integer - Maximum width
-  * `max-height` Integer - Maximum height
-  * `resizable` Boolean - Whether window is resizable
-  * `always-on-top` Boolean - Whether the window should always stay on top of
-     other windows
-  * `fullscreen` Boolean - Whether the window should show in fullscreen
-  * `skip-taskbar` Boolean - Do not show window in taskbar
-  * `zoom-factor` Number - The default zoom factor of the page, zoom factor is
-    zoom percent / 100, so `3.0` represents `300%`
-  * `kiosk` Boolean - The kiosk mode
-  * `title` String - Default window title
-  * `icon` [Image](image.md) - The window icon
-  * `show` Boolean - Whether window should be shown when created
-  * `frame` Boolean - Specify `false` to create a
-    [Frameless Window](frameless-window.md)
-  * `node-integration` String - Default value is `except-iframe`, can also be
-    `all`, `manual-enable-iframe` or `disable`, see
-     [Web Security](web-security.md) for more informations.
-  * `accept-first-mouse` Boolean - Whether the web view accepts a single
-     mouse-down event that simultaneously activates the window
-  * `auto-hide-menu-bar` Boolean - Auto hide the menu bar unless the `Alt`
-    key is pressed.
-  * `enable-larger-than-screen` Boolean - Enable the window to be resized larger
-    than screen.
-  * `dark-theme` Boolean - Forces using dark theme for the window, only works on
-    some GTK+3 desktop environments.
-  * `web-preferences` Object - Settings of web page's features
-    * `javascript` Boolean
-    * `web-security` Boolean
-    * `images` Boolean
-    * `java` Boolean
-    * `text-areas-are-resizable` Boolean
-    * `webgl` Boolean
-    * `webaudio` Boolean
-    * `plugins` Boolean - Whether plugins should be enabled, currently only
-      `NPAPI` plugins are supported.
-    * `extra-plugin-dirs` Array - Array of paths that would be searched for
-      plugins. Note that if you want to add a directory under your app, you
-      should use `__dirname` or `process.resourcesPath` to join the paths to
-      make them absolute, using relative paths would make atom-shell search
-      under current working directory.
-    * `experimental-features` Boolean
-    * `experimental-canvas-features` Boolean
-    * `subpixel-font-scaling` Boolean
-    * `overlay-scrollbars` Boolean
-    * `overlay-fullscreen-video` Boolean
-    * `shared-worker` Boolean
-    * `direct-write` Boolean - Whether the DirectWrite font rendering system on
-       Windows is enabled
+### `new BrowserWindow(options)`
 
-Creates a new `BrowserWindow` with native properties set by the `options`.
-Usually you only need to set the `width` and `height`, other properties will
-have decent default values.
+`options` Object, properties:
+
+* `width` Integer (**required**) - Window's width.
+* `height` Integer (**required**) - Window's height.
+* `x` Integer - Window's left offset from screen.
+* `y` Integer - Window's top offset from screen.
+* `use-content-size` Boolean - The `width` and `height` would be used as web
+   page's size, which means the actual window's size will include window
+   frame's size and be slightly larger.
+* `center` Boolean - Show window in the center of the screen.
+* `min-width` Integer - Window's minimum width.
+* `min-height` Integer - Window's minimum height.
+* `max-width` Integer - Window's maximum width.
+* `max-height` Integer - Window's maximum height.
+* `resizable` Boolean - Whether window is resizable.
+* `always-on-top` Boolean - Whether the window should always stay on top of
+   other windows.
+* `fullscreen` Boolean - Whether the window should show in fullscreen. When
+  set to `false` the fullscreen button will also be hidden on OS X.
+* `skip-taskbar` Boolean - Whether to show the window in taskbar.
+* `kiosk` Boolean - The kiosk mode.
+* `title` String - Default window title.
+* `icon` [NativeImage](native-image.md) - The window icon, when omitted on
+  Windows the executable's icon would be used as window icon.
+* `show` Boolean - Whether window should be shown when created.
+* `frame` Boolean - Specify `false` to create a
+[Frameless Window](frameless-window.md).
+* `accept-first-mouse` Boolean - Whether the web view accepts a single
+  mouse-down event that simultaneously activates the window.
+* `disable-auto-hide-cursor` Boolean - Whether to hide cursor when typing.
+* `auto-hide-menu-bar` Boolean - Auto hide the menu bar unless the `Alt`
+  key is pressed.
+* `enable-larger-than-screen` Boolean - Enable the window to be resized larger
+  than screen.
+* `dark-theme` Boolean - Forces using dark theme for the window, only works on
+  some GTK+3 desktop environments.
+* `transparent` Boolean - Makes the window [transparent](frameless-window.md).
+* `type` String - Specifies the type of the window, possible types are
+  `desktop`, `dock`, `toolbar`, `splash`, `notification`. This only works on
+  Linux.
+* `standard-window` Boolean - Uses the OS X's standard window instead of the
+  textured window. Defaults to `true`.
+* `web-preferences` Object - Settings of web page's features, properties:
+  * `node-integration` Boolean - Whether node integration is enabled. Default
+    is `true`.
+  * `preload` String - Specifies a script that will be loaded before other
+    scripts run in the page. This script will always have access to node APIs
+    no matter whether node integration is turned on for the page, and the path
+    of `preload` script has to be absolute path.
+  * `partition` String - Sets the session used by the page. If `partition`
+    starts with `persist:`, the page will use a persistent session available to
+    all pages in the app with the same `partition`. if there is no `persist:`
+    prefix, the page will use an in-memory session. By assigning the same
+    `partition`, multiple pages can share the same session. If the `partition`
+    is unset then default session of the app will be used.
+  * `zoom-factor` Number - The default zoom factor of the page, `3.0` represents
+    `300%`.
+  * `javascript` Boolean
+  * `web-security` Boolean - When setting `false`, it will disable the
+    same-origin policy (Usually using testing websites by people), and set
+    `allow_displaying_insecure_content` and `allow_running_insecure_content` to
+    `true` if these two options are not set by user.
+  * `allow-displaying-insecure-content` Boolean - Allow an https page to display
+    content like images from http URLs.
+  * `allow-running-insecure-content` Boolean - Allow a https page to run
+    JavaScript, CSS or plugins from http URLs.
+  * `images` Boolean
+  * `java` Boolean
+  * `text-areas-are-resizable` Boolean
+  * `webgl` Boolean
+  * `webaudio` Boolean
+  * `plugins` Boolean - Whether plugins should be enabled.
+  * `experimental-features` Boolean
+  * `experimental-canvas-features` Boolean
+  * `subpixel-font-scaling` Boolean
+  * `overlay-scrollbars` Boolean
+  * `overlay-fullscreen-video` Boolean
+  * `shared-worker` Boolean
+  * `direct-write` Boolean - Whether the DirectWrite font rendering system on
+     Windows is enabled.
+  * `page-visibility` Boolean - Page would be forced to be always in visible
+     or hidden state once set, instead of reflecting current window's
+     visibility. Users can set it to `true` to prevent throttling of DOM
+     timers.
+
+## Events
+
+The `BrowserWindow` object emits the following events:
+
+**Note:** Some events are only available on specific operating systems and are labeled as such.
 
 ### Event: 'page-title-updated'
+
+Returns:
 
 * `event` Event
 
@@ -102,26 +130,28 @@ would prevent the native window's title to change.
 
 ### Event: 'close'
 
+Returns:
+
 * `event` Event
 
 Emitted when the window is going to be closed. It's emitted before the
-`beforeunload` and `unload` event of DOM, calling `event.preventDefault()`
-would cancel the close.
+`beforeunload` and `unload` event of the DOM. Calling `event.preventDefault()`
+will cancel the close.
 
 Usually you would want to use the `beforeunload` handler to decide whether the
 window should be closed, which will also be called when the window is
-reloaded. In atom-shell, returning an empty string or `false` would cancel the
-close. An example is:
+reloaded. In Electron, returning an empty string or `false` would cancel the
+close. For example:
 
 ```javascript
 window.onbeforeunload = function(e) {
   console.log('I do not want to be closed');
 
   // Unlike usual browsers, in which a string should be returned and the user is
-  // prompted to confirm the page unload. atom-shell gives the power completely
-  // to the developers, return empty string or false would prevent the unloading
-  // now. You can also use the dialog API to let user confirm it.
-  return false;
+  // prompted to confirm the page unload, Electron gives developers more options.
+  // Returning empty string or false would prevent the unloading now.
+  // You can also use the dialog API to let the user confirm closing the application.
+  e.returnValue = false;
 };
 ```
 
@@ -140,198 +170,339 @@ Emitted when the unresponsive web page becomes responsive again.
 
 ### Event: 'blur'
 
-Emitted when window loses focus.
+Emitted when the window loses focus.
 
 ### Event: 'focus'
 
-Emitted when window gains focus.
+Emitted when the window gains focus.
+
+### Event: 'maximize'
+
+Emitted when window is maximized.
+
+### Event: 'unmaximize'
+
+Emitted when the window exits from maximized state.
+
+### Event: 'minimize'
+
+Emitted when the window is minimized.
+
+### Event: 'restore'
+
+Emitted when the window is restored from minimized state.
+
+### Event: 'resize'
+
+Emitted when the window is getting resized.
+
+### Event: 'move'
+
+Emitted when the window is getting moved to a new position.
+
+__Note__: On OS X this event is just an alias of `moved`.
+
+### Event: 'moved' _OS X_
+
+Emitted once when the window is moved to a new position.
+
+### Event: 'enter-full-screen'
+
+Emitted when the window enters full screen state.
+
+### Event: 'leave-full-screen'
+
+Emitted when the window leaves full screen state.
+
+### Event: 'enter-html-full-screen'
+
+Emitted when the window enters full screen state triggered by html api.
+
+### Event: 'leave-html-full-screen'
+
+Emitted when the window leaves full screen state triggered by html api.
 
 ### Event: 'devtools-opened'
 
-Emitted when devtools is opened.
+Emitted when DevTools is opened.
 
 ### Event: 'devtools-closed'
 
-Emitted when devtools is closed.
+Emitted when DevTools is closed.
 
-### Class Method: BrowserWindow.getAllWindows()
+### Event: 'devtools-focused'
+
+Emitted when DevTools is focused / opened.
+
+### Event: 'app-command' _Windows_
+
+Emitted when an [App Command](https://msdn.microsoft.com/en-us/library/windows/desktop/ms646275(v=vs.85).aspx)
+is invoked. These are typically related to keyboard media keys or browser
+commands, as well as the "Back" button built into some mice on Windows.
+
+```js
+someWindow.on('app-command', function(e, cmd) {
+  // Navigate the window back when the user hits their mouse back button
+  if (cmd === 'browser-backward' && someWindow.webContents.canGoBack()) {
+    someWindow.webContents.goBack();
+  }
+});
+```
+
+## Methods
+
+The `BrowserWindow` object has the following methods:
+
+### `BrowserWindow.getAllWindows()`
 
 Returns an array of all opened browser windows.
 
-### Class Method: BrowserWindow.getFocusedWindow()
+### `BrowserWindow.getFocusedWindow()`
 
 Returns the window that is focused in this application.
 
-### Class Method: BrowserWindow.fromWebContents(webContents)
+### `BrowserWindow.fromWebContents(webContents)`
 
-* `webContents` WebContents
+* `webContents` [WebContents](web-contents.md)
 
-Find a window according to the `webContents` it owns
+Find a window according to the `webContents` it owns.
 
-### Class Method: BrowserWindow.fromId(id)
+### `BrowserWindow.fromId(id)`
 
 * `id` Integer
 
 Find a window according to its ID.
 
-### Class Method: BrowserWindow.addDevToolsExtension(path)
+### `BrowserWindow.addDevToolsExtension(path)`
 
 * `path` String
 
-Adds devtools extension located at `path`, and returns extension's name.
+Adds DevTools extension located at `path`, and returns extension's name.
 
 The extension will be remembered so you only need to call this API once, this
 API is not for programming use.
 
-### Class Method: BrowserWindow.removeDevToolsExtension(name)
+### `BrowserWindow.removeDevToolsExtension(name)`
 
 * `name` String
 
-Remove the devtools extension whose name is `name`.
+Remove the DevTools extension whose name is `name`.
 
-### BrowserWindow.webContents
+## Instance Properties
+
+Objects created with `new BrowserWindow` have the following properties:
+
+```javascript
+var BrowserWindow = require('browser-window');
+
+// In this example `win` is our instance
+var win = new BrowserWindow({ width: 800, height: 600 });
+
+```
+
+### `win.webContents`
 
 The `WebContents` object this window owns, all web page related events and
-operations would be done via it.
+operations will be done via it.
 
-**Note:** Users should never store this object because it may becomes `null`
-when the web page has crashed.
+See the [`webContents` documentation](web-contents.md) for its methods and
+events.
 
-### BrowserWindow.devToolsWebContents
+**Note:** Users should never store this object because it may become `null`
+when the renderer process (web page) has crashed.
 
-Get the `WebContents` of devtools of this window.
+### `win.devToolsWebContents`
 
-**Note:** Users should never store this object because it may becomes `null`
-when the devtools has been closed.
+Get the `WebContents` of DevTools for this window.
 
-### BrowserWindow.id
+**Note:** Users should never store this object because it may become `null`
+when the DevTools has been closed.
 
-Get the unique ID of this window.
+### `win.id`
 
-### BrowserWindow.destroy()
+The unique ID of this window.
+
+## Instance Methods
+
+Objects created with `new BrowserWindow` have the following instance methods:
+
+**Note:** Some methods are only available on specific operating systems and are labeled as such.
+
+```javascript
+var BrowserWindow = require('browser-window');
+
+// In this example `win` is our instance
+var win = new BrowserWindow({ width: 800, height: 600 });
+
+```
+
+### `win.destroy()`
 
 Force closing the window, the `unload` and `beforeunload` event won't be emitted
-for the web page, and `close` event would also not be emitted for this window,
-but it would guarantee the `closed` event to be emitted.
+for the web page, and `close` event will also not be emitted
+for this window, but it guarantees the `closed` event will be emitted.
 
-You should only use this method when the web page has crashed.
+You should only use this method when the renderer process (web page) has
+crashed.
 
-### BrowserWindow.close()
+### `win.close()`
 
 Try to close the window, this has the same effect with user manually clicking
 the close button of the window. The web page may cancel the close though, see
-the [close event](window#event-close).
+the [close event](#event-close).
 
-### BrowserWindow.focus()
+### `win.focus()`
 
 Focus on the window.
 
-### BrowserWindow.isFocused()
+### `win.isFocused()`
 
-Returns whether the window is focused.
+Returns a boolean, whether the window is focused.
 
-### BrowserWindow.show()
+### `win.show()`
 
-Shows the window.
+Shows and gives focus to the window.
 
-### BrowserWindow.hide()
+### `win.showInactive()`
+
+Shows the window but doesn't focus on it.
+
+### `win.hide()`
 
 Hides the window.
 
-### BrowserWindow.isVisible()
+### `win.isVisible()`
 
-Returns whether the window is visible to the user.
+Returns a boolean, whether the window is visible to the user.
 
-### BrowserWindow.maximize()
+### `win.maximize()`
 
 Maximizes the window.
 
-### BrowserWindow.unmaximize()
+### `win.unmaximize()`
 
 Unmaximizes the window.
 
-### BrowserWindow.isMaximized()
+### `win.isMaximized()`
 
-Returns whether the window is maximized.
+Returns a boolean, whether the window is maximized.
 
-### BrowserWindow.minimize()
+### `win.minimize()`
 
 Minimizes the window. On some platforms the minimized window will be shown in
 the Dock.
 
-### BrowserWindow.restore()
+### `win.restore()`
 
 Restores the window from minimized state to its previous state.
 
-### BrowserWindow.isMinimized()
+### `win.isMinimized()`
 
-Returns whether the window is minimized.
+Returns a boolean, whether the window is minimized.
 
-### BrowserWindow.setFullScreen(flag)
+### `win.setFullScreen(flag)`
 
 * `flag` Boolean
 
 Sets whether the window should be in fullscreen mode.
 
-### BrowserWindow.isFullScreen()
+### `win.isFullScreen()`
 
-Returns whether the window is in fullscreen mode.
+Returns a boolean, whether the window is in fullscreen mode.
 
-### BrowserWindow.setSize(width, height)
+### `win.setAspectRatio(aspectRatio[, extraSize])` _OS X_
+
+* `aspectRatio` The aspect ratio we want to maintain for some portion of the
+content view.
+* `extraSize` Object (optional) - The extra size not to be included while
+maintaining the aspect ratio. Properties:
+  * `width` Integer
+  * `height` Integer
+
+This will have a window maintain an aspect ratio. The extra size allows a
+developer to have space, specified in pixels, not included within the aspect
+ratio calculations. This API already takes into account the difference between a
+window's size and its content size.
+
+Consider a normal window with an HD video player and associated controls.
+Perhaps there are 15 pixels of controls on the left edge, 25 pixels of controls
+on the right edge and 50 pixels of controls below the player. In order to
+maintain a 16:9 aspect ratio (standard aspect ratio for HD @1920x1080) within
+the player itself we would call this function with arguments of 16/9 and
+[ 40, 50 ]. The second argument doesn't care where the extra width and height
+are within the content view--only that they exist. Just sum any extra width and
+height areas you have within the overall content view.
+
+### `win.setBounds(options)`
+
+`options` Object, properties:
+
+* `x` Integer
+* `y` Integer
+* `width` Integer
+* `height` Integer
+
+Resizes and moves the window to `width`, `height`, `x`, `y`.
+
+### `win.getBounds()`
+
+Returns an object that contains window's width, height, x and y values.
+
+### `win.setSize(width, height)`
 
 * `width` Integer
 * `height` Integer
 
 Resizes the window to `width` and `height`.
 
-### BrowserWindow.getSize()
+### `win.getSize()`
 
 Returns an array that contains window's width and height.
 
-### BrowserWindow.setContentSize(width, height)
+### `win.setContentSize(width, height)`
 
 * `width` Integer
 * `height` Integer
 
 Resizes the window's client area (e.g. the web page) to `width` and `height`.
 
-### BrowserWindow.getContentSize()
+### `win.getContentSize()`
 
 Returns an array that contains window's client area's width and height.
 
-### BrowserWindow.setMinimumSize(width, height)
+### `win.setMinimumSize(width, height)`
 
 * `width` Integer
 * `height` Integer
 
 Sets the minimum size of window to `width` and `height`.
 
-### BrowserWindow.getMinimumSize()
+### `win.getMinimumSize()`
 
 Returns an array that contains window's minimum width and height.
 
-### BrowserWindow.setMaximumSize(width, height)
+### `win.setMaximumSize(width, height)`
 
 * `width` Integer
 * `height` Integer
 
 Sets the maximum size of window to `width` and `height`.
 
-### BrowserWindow.getMaximumSize()
+### `win.getMaximumSize()`
 
 Returns an array that contains window's maximum width and height.
 
-### BrowserWindow.setResizable(resizable)
+### `win.setResizable(resizable)`
 
 * `resizable` Boolean
 
 Sets whether the window can be manually resized by user.
 
-### BrowserWindow.isResizable()
+### `win.isResizable()`
 
 Returns whether the window can be manually resized by user.
 
-### BrowserWindow.setAlwaysOnTop(flag)
+### `win.setAlwaysOnTop(flag)`
 
 * `flag` Boolean
 
@@ -339,156 +510,155 @@ Sets whether the window should show always on top of other windows. After
 setting this, the window is still a normal window, not a toolbox window which
 can not be focused on.
 
-### BrowserWindow.isAlwaysOnTop()
+### `win.isAlwaysOnTop()`
 
 Returns whether the window is always on top of other windows.
 
-### BrowserWindow.center()
+### `win.center()`
 
 Moves window to the center of the screen.
 
-### BrowserWindow.setPosition(x, y)
+### `win.setPosition(x, y)`
 
 * `x` Integer
 * `y` Integer
 
 Moves window to `x` and `y`.
 
-### BrowserWindow.getPosition()
+### `win.getPosition()`
 
 Returns an array that contains window's current position.
 
-### BrowserWindow.setTitle(title)
+### `win.setTitle(title)`
 
 * `title` String
 
 Changes the title of native window to `title`.
 
-### BrowserWindow.getTitle()
+### `win.getTitle()`
 
 Returns the title of the native window.
 
 **Note:** The title of web page can be different from the title of the native
 window.
 
-### BrowserWindow.flashFrame(flag)
+### `win.flashFrame(flag)`
 
 * `flag` Boolean
 
 Starts or stops flashing the window to attract user's attention.
 
-### BrowserWindow.setSkipTaskbar(skip)
+### `win.setSkipTaskbar(skip)`
 
 * `skip` Boolean
 
-Makes the window do not show in taskbar.
+Makes the window not show in the taskbar.
 
-### BrowserWindow.setKiosk(flag)
+### `win.setKiosk(flag)`
 
 * `flag` Boolean
 
 Enters or leaves the kiosk mode.
 
-### BrowserWindow.isKiosk()
+### `win.isKiosk()`
 
 Returns whether the window is in kiosk mode.
 
-### BrowserWindow.setRepresentedFilename(filename)
+### `win.setRepresentedFilename(filename)` _OS X_
 
 * `filename` String
 
-__OS X Only:__ Sets the pathname of the file the window represents, and the icon
-of the file will show in window's title bar.
+Sets the pathname of the file the window represents, and the icon of the file
+will show in window's title bar.
 
-### BrowserWindow.getRepresentedFilename()
+### `win.getRepresentedFilename()` _OS X_
 
-__OS X Only:__ Returns the pathname of the file the window represents.
+Returns the pathname of the file the window represents.
 
-### BrowserWindow.setDocumentEdited(edited)
+### `win.setDocumentEdited(edited)` _OS X_
 
 * `edited` Boolean
 
-__OS X Only:__ Specifies whether the window’s document has been edited, and the
-icon in titlebar will become grey when set to `true`.
+Specifies whether the window’s document has been edited, and the icon in title
+bar will become grey when set to `true`.
 
-### BrowserWindow.IsDocumentEdited()
+### `win.IsDocumentEdited()` _OS X_
 
-__OS X Only:__ Whether the window's document has been edited.
+Whether the window's document has been edited.
 
-### BrowserWindow.openDevTools()
+### `win.openDevTools([options])`
+
+* `options` Object (optional). Properties:
+  * `detach` Boolean - opens DevTools in a new window
 
 Opens the developer tools.
 
-### BrowserWindow.closeDevTools()
+### `win.closeDevTools()`
 
 Closes the developer tools.
 
-### BrowserWindow.toggleDevTools()
+### `win.isDevToolsOpened()`
+
+Returns whether the developer tools are opened.
+
+### `win.toggleDevTools()`
 
 Toggle the developer tools.
 
-### BrowserWindow.inspectElement(x, y)
+### `win.inspectElement(x, y)`
 
 * `x` Integer
 * `y` Integer
 
 Starts inspecting element at position (`x`, `y`).
 
-### BrowserWindow.focusOnWebView()
+### `win.inspectServiceWorker()`
 
-### BrowserWindow.blurWebView()
+Opens the developer tools for the service worker context present in the web
+contents.
 
-### BrowserWindow.capturePage([rect, ]callback)
+### `win.focusOnWebView()`
 
-* `rect` Object - The area of page to be captured
+### `win.blurWebView()`
+
+### `win.capturePage([rect, ]callback)`
+
+* `rect` Object (optional)- The area of page to be captured, properties:
   * `x` Integer
   * `y` Integer
   * `width` Integer
   * `height` Integer
 * `callback` Function
 
-Captures the snapshot of page within `rect`, upon completion `callback` would be
-called with `callback(image)`, the `image` is a `Buffer` that stores the PNG
-encoded data of the snapshot. Omitting the `rect` would capture the whole
-visible page.
+Captures a snapshot of the page within `rect`. Upon completion `callback` will
+be called with `callback(image)`. The `image` is an instance of
+[NativeImage](native-image.md) that stores data of the snapshot. Omitting
+`rect` will capture the whole visible page.
 
-You can write received `image` directly to a `.png` file, or you can base64
-encode it and use data URL to embed the image in HTML.
+### `win.print([options])`
 
-**Note:** Be sure to read documents on remote buffer in
-[remote](remote.md) if you are going to use this API in renderer
-process.
+Same as `webContents.print([options])`
 
-### BrowserWindow.print([options])
+### `win.printToPDF(options, callback)`
 
-* `options` Object
-  * `silent` Boolean - Don't ask user for print settings, defaults to `false`
-  * `printBackground` Boolean - Also prints the background color and image of
-    the web page, defaults to `false`.
+Same as `webContents.printToPDF(options, callback)`
 
-Prints window's web page. When `silent` is set to `false`, atom-shell will pick
-up system's default printer and default settings for printing.
+### `win.loadUrl(url[, options])`
 
-Calling `window.print()` in web page is equivalent to call
-`BrowserWindow.print({silent: false, printBackground: false})`.
+Same as `webContents.loadUrl(url[, options])`.
 
-### BrowserWindow.loadUrl(url)
+### `win.reload()`
 
-Same with `webContents.loadUrl(url)`.
+Same as `webContents.reload`.
 
-### BrowserWindow.reload()
-
-Same with `webContents.reload`.
-
-### BrowserWindow.setMenu(menu)
+### `win.setMenu(menu)` _OS X_
 
 * `menu` Menu
 
-Sets the `menu` as the window top menu.
+Sets the `menu` as the window's menu bar, setting it to `null` will remove the
+menu bar.
 
-__Note:__ This API is not available on OS X.
-
-### BrowserWindow.setProgressBar(progress)
+### `win.setProgressBar(progress)`
 
 * `progress` Double
 
@@ -501,150 +671,90 @@ On Linux platform, only supports Unity desktop environment, you need to specify
 the `*.desktop` file name to `desktopName` field in `package.json`. By default,
 it will assume `app.getName().desktop`.
 
-## Class: WebContents
+### `win.setOverlayIcon(overlay, description)` _Windows 7+_
 
-A `WebContents` is responsible for rendering and controlling a web page.
+* `overlay` [NativeImage](native-image.md) - the icon to display on the bottom
+right corner of the taskbar icon. If this parameter is `null`, the overlay is
+cleared
+* `description` String - a description that will be provided to Accessibility
+screen readers
 
-`WebContents` is an
-[EventEmitter](http://nodejs.org/api/events.html#events_class_events_eventemitter).
+Sets a 16px overlay onto the current taskbar icon, usually used to convey some
+sort of application status or to passively notify the user.
 
-### Event: 'crashed'
 
-Emitted when the renderer process is crashed.
+### `win.setThumbarButtons(buttons)` _Windows 7+_
 
-### Event: 'did-finish-load'
+`buttons` Array of `button` Objects:
 
-Emitted when the navigation is done, i.e. the spinner of the tab will stop
-spinning, and the onload event was dispatched.
+`button` Object, properties:
 
-### Event: 'did-frame-finish-load'
+* `icon` [NativeImage](native-image.md) - The icon showing in thumbnail
+  toolbar.
+* `tooltip` String (optional) - The text of the button's tooltip.
+* `flags` Array (optional) - Control specific states and behaviors
+  of the button. By default, it uses `enabled`. It can include following
+  Strings:
+  * `enabled` - The button is active and available to the user.
+  * `disabled` - The button is disabled. It is present, but has a visual
+    state indicating it will not respond to user action.
+  * `dismissonclick` - When the button is clicked, the taskbar button's
+    flyout closes immediately.
+  * `nobackground` - Do not draw a button border, use only the image.
+  * `hidden` - The button is not shown to the user.
+  * `noninteractive` - The button is enabled but not interactive; no
+    pressed button state is drawn. This value is intended for instances
+    where the button is used in a notification.
+* `click` - Function
 
-* `event` Event
-* `isMainFrame` Boolean
+Add a thumbnail toolbar with a specified set of buttons to the thumbnail image
+of a window in a taskbar button layout. Returns a `Boolean` object indicates
+whether the thumbnail has been added successfully.
 
-Emitted when a frame has done navigation.
+The number of buttons in thumbnail toolbar should be no greater than 7 due to
+the limited room. Once you setup the thumbnail toolbar, the toolbar cannot be
+removed due to the platform's limitation. But you can call the API with an empty
+array to clean the buttons.
 
-### Event: 'did-start-loading'
+### `win.showDefinitionForSelection()` _OS X_
 
-### Event: 'did-stop-loading'
+Shows pop-up dictionary that searches the selected word on the page.
 
-### WebContents.loadUrl(url)
+### `win.setAutoHideMenuBar(hide)`
 
-* `url` URL
+* `hide` Boolean
 
-Loads the `url` in the window, the `url` must contains the protocol prefix,
-e.g. the `http://` or `file://`.
+Sets whether the window menu bar should hide itself automatically. Once set the
+menu bar will only show when users press the single `Alt` key.
 
-### WebContents.getUrl()
+If the menu bar is already visible, calling `setAutoHideMenuBar(true)` won't
+hide it immediately.
 
-Returns URL of current web page.
+### `win.isMenuBarAutoHide()`
 
-### WebContents.getTitle()
+Returns whether menu bar automatically hides itself.
 
-Returns the title of web page.
+### `win.setMenuBarVisibility(visible)`
 
-### WebContents.isLoading()
+* `visible` Boolean
 
-Returns whether web page is still loading resources.
+Sets whether the menu bar should be visible. If the menu bar is auto-hide, users
+can still bring up the menu bar by pressing the single `Alt` key.
 
-### WebContents.isWaitingForResponse()
+### `win.isMenuBarVisible()`
 
-Returns whether web page is waiting for a first-response for the main resource
-of the page.
+Returns whether the menu bar is visible.
 
-### WebContents.stop()
+### `win.setVisibleOnAllWorkspaces(visible)`
 
-Stops any pending navigation.
+* `visible` Boolean
 
-### WebContents.reload()
+Sets whether the window should be visible on all workspaces.
 
-Reloads current page.
+**Note:** This API does nothing on Windows.
 
-### WebContents.reloadIgnoringCache()
+### `win.isVisibleOnAllWorkspaces()`
 
-Reloads current page and ignores cache.
+Returns whether the window is visible on all workspaces.
 
-### WebContents.canGoBack()
-
-Returns whether the web page can go back.
-
-### WebContents.canGoForward()
-
-Returns whether the web page can go forward.
-
-### WebContents.canGoToOffset(offset)
-
-* `offset` Integer
-
-Returns whether the web page can go to `offset`.
-
-### WebContents.goBack()
-
-Makes the web page go back.
-
-### WebContents.goForward()
-
-Makes the web page go forward.
-
-### WebContents.goToIndex(index)
-
-* `index` Integer
-
-Navigates to the specified absolute index.
-
-### WebContents.goToOffset(offset)
-
-* `offset` Integer
-
-Navigates to the specified offset from the "current entry".
-
-### WebContents.IsCrashed()
-
-Whether the renderer process has crashed.
-
-### WebContents.executeJavaScript(code)
-
-* `code` String
-
-Evaluate `code` in page.
-
-### WebContents.send(channel[, args...])
-
-* `channel` String
-
-Send `args..` to the web page via `channel` in asynchronous message, the web
-page can handle it by listening to the `channel` event of `ipc` module.
-
-An example of sending messages from browser side to web pages:
-
-```javascript
-// On browser side.
-var window = null;
-app.on('ready', function() {
-  window = new BrowserWindow({width: 800, height: 600});
-  window.loadUrl('file://' + __dirname + '/index.html');
-  window.webContents.on('did-finish-load', function() {
-    window.webContents.send('ping', 'whoooooooh!');
-  });
-});
-```
-
-```html
-// index.html
-<html>
-<body>
-  <script>
-    require('ipc').on('ping', function(message) {
-      console.log(message);  // Prints "whoooooooh!"
-    });
-  </script>
-</body>
-</html>
-```
-
-**Note:**
-
-1. The IPC message handler in web pages do not have a `event` parameter, which
-   is different from the handlers on browser side.
-2. There is no way to send synchronous messages from browser side to web pages,
-   because it would be very easy to cause dead locks.
+**Note:** This API always returns false on Windows.

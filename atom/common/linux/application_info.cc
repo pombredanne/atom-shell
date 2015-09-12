@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 namespace brightray {
 
 std::string GetApplicationName() {
-  return "Atom-Shell";
+  return ATOM_PRODUCT_NAME;
 }
 
 std::string GetApplicationVersion() {

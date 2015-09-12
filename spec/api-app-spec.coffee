@@ -1,5 +1,7 @@
 assert = require 'assert'
-app = require('remote').require 'app'
+remote = require 'remote'
+app = remote.require 'app'
+BrowserWindow = remote.require 'browser-window'
 
 describe 'app module', ->
   describe 'app.getVersion()', ->
@@ -15,11 +17,28 @@ describe 'app module', ->
 
   describe 'app.getName()', ->
     it 'returns the name field of package.json', ->
-      assert.equal app.getName(), 'Atom Shell Test App'
+      assert.equal app.getName(), 'Electron Test'
 
   describe 'app.setName(name)', ->
     it 'overrides the name', ->
-      assert.equal app.getName(), 'Atom Shell Test App'
+      assert.equal app.getName(), 'Electron Test'
       app.setName 'test-name'
       assert.equal app.getName(), 'test-name'
-      app.setName 'Atom Shell Test App'
+      app.setName 'Electron Test'
+
+  describe 'focus/blur event', ->
+    w = null
+    beforeEach ->
+      w.destroy() if w?
+      w = new BrowserWindow(show: false, width: 400, height: 400)
+    afterEach ->
+      w.destroy() if w?
+      w = null
+    it 'should emit focus event', (done) ->
+      app.once 'browser-window-blur', (e, window) ->
+        assert.equal w.id, window.id
+        done()
+      app.once 'browser-window-focus', (e, window) ->
+        assert.equal w.id, window.id
+        w.emit 'blur'
+      w.emit 'focus'

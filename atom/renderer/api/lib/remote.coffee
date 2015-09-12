@@ -1,19 +1,35 @@
+process = global.process
 ipc = require 'ipc'
-CallbacksRegistry = require 'callbacks-registry'
 v8Util = process.atomBinding 'v8_util'
+CallbacksRegistry = require 'callbacks-registry'
 
 callbacksRegistry = new CallbacksRegistry
 
+# Check for circular reference.
+isCircular = (field, visited) ->
+  if typeof field is 'object'
+    if field in visited
+      return true
+    visited.push field
+  return false
+
 # Convert the arguments object into an array of meta data.
-wrapArgs = (args) ->
+wrapArgs = (args, visited=[]) ->
   valueToMeta = (value) ->
     if Array.isArray value
-      type: 'array', value: wrapArgs(value)
+      type: 'array', value: wrapArgs(value, visited)
+    else if Buffer.isBuffer value
+      type: 'buffer', value: Array::slice.call(value, 0)
+    else if value? and value.constructor.name is 'Promise'
+      type: 'promise', then: valueToMeta(value.then.bind(value))
     else if value? and typeof value is 'object' and v8Util.getHiddenValue value, 'atomId'
       type: 'remote-object', id: v8Util.getHiddenValue value, 'atomId'
     else if value? and typeof value is 'object'
       ret = type: 'object', name: value.constructor.name, members: []
-      ret.members.push(name: prop, value: valueToMeta(field)) for prop, field of value
+      for prop, field of value
+        ret.members.push
+          name: prop
+          value: valueToMeta(if isCircular(field, visited) then null else field)
       ret
     else if typeof value is 'function' and v8Util.getHiddenValue value, 'returnValue'
       type: 'function-with-return-value', value: valueToMeta(value())
@@ -29,6 +45,8 @@ metaToValue = (meta) ->
   switch meta.type
     when 'value' then meta.value
     when 'array' then (metaToValue(el) for el in meta.members)
+    when 'buffer' then new Buffer(meta.value)
+    when 'promise' then Promise.resolve(then: metaToValue(meta.then))
     when 'error'
       throw new Error("#{meta.message}\n#{meta.stack}")
     else
@@ -39,7 +57,7 @@ metaToValue = (meta) ->
           constructor: ->
             if @constructor == RemoteFunction
               # Constructor call.
-              obj = ipc.sendChannelSync 'ATOM_BROWSER_CONSTRUCTOR', meta.id, wrapArgs(arguments)
+              obj = ipc.sendSync 'ATOM_BROWSER_CONSTRUCTOR', meta.id, wrapArgs(arguments)
 
               # Returning object in constructor will replace constructed object
               # with the returned object.
@@ -47,7 +65,7 @@ metaToValue = (meta) ->
               return metaToValue obj
             else
               # Function call.
-              ret = ipc.sendChannelSync 'ATOM_BROWSER_FUNCTION_CALL', meta.id, wrapArgs(arguments)
+              ret = ipc.sendSync 'ATOM_BROWSER_FUNCTION_CALL', meta.id, wrapArgs(arguments)
               return metaToValue ret
       else
         ret = v8Util.createObjectWithName meta.name
@@ -61,27 +79,30 @@ metaToValue = (meta) ->
               constructor: ->
                 if @constructor is RemoteMemberFunction
                   # Constructor call.
-                  obj = ipc.sendChannelSync 'ATOM_BROWSER_MEMBER_CONSTRUCTOR', meta.id, member.name, wrapArgs(arguments)
+                  obj = ipc.sendSync 'ATOM_BROWSER_MEMBER_CONSTRUCTOR', meta.id, member.name, wrapArgs(arguments)
                   return metaToValue obj
                 else
                   # Call member function.
-                  ret = ipc.sendChannelSync 'ATOM_BROWSER_MEMBER_CALL', meta.id, member.name, wrapArgs(arguments)
+                  ret = ipc.sendSync 'ATOM_BROWSER_MEMBER_CALL', meta.id, member.name, wrapArgs(arguments)
                   return metaToValue ret
           else
-            ret.__defineSetter__ member.name, (value) ->
-              # Set member data.
-              ipc.sendChannelSync 'ATOM_BROWSER_MEMBER_SET', meta.id, member.name, value
-              value
+            Object.defineProperty ret, member.name,
+              enumerable: true,
+              configurable: false,
+              set: (value) ->
+                # Set member data.
+                ipc.sendSync 'ATOM_BROWSER_MEMBER_SET', meta.id, member.name, value
+                value
 
-            ret.__defineGetter__ member.name, ->
-              # Get member data.
-              ret = ipc.sendChannelSync 'ATOM_BROWSER_MEMBER_GET', meta.id, member.name
-              metaToValue ret
+              get: ->
+                # Get member data.
+                ret = ipc.sendSync 'ATOM_BROWSER_MEMBER_GET', meta.id, member.name
+                metaToValue ret
 
       # Track delegate object's life time, and tell the browser to clean up
       # when the object is GCed.
       v8Util.setDestructor ret, ->
-        ipc.sendChannel 'ATOM_BROWSER_DEREFERENCE', meta.storeId
+        ipc.send 'ATOM_BROWSER_DEREFERENCE', meta.id
 
       # Remember object's id.
       v8Util.setHiddenValue ret, 'atomId', meta.id
@@ -103,19 +124,26 @@ moduleCache = {}
 exports.require = (module) ->
   return moduleCache[module] if moduleCache[module]?
 
-  meta = ipc.sendChannelSync 'ATOM_BROWSER_REQUIRE', module
+  meta = ipc.sendSync 'ATOM_BROWSER_REQUIRE', module
   moduleCache[module] = metaToValue meta
 
-# Get current window object.
+# Get current BrowserWindow object.
 windowCache = null
 exports.getCurrentWindow = ->
   return windowCache if windowCache?
-  meta = ipc.sendChannelSync 'ATOM_BROWSER_CURRENT_WINDOW'
+  meta = ipc.sendSync 'ATOM_BROWSER_CURRENT_WINDOW', process.guestInstanceId
   windowCache = metaToValue meta
+
+# Get current WebContents object.
+webContentsCache = null
+exports.getCurrentWebContents = ->
+  return webContentsCache if webContentsCache?
+  meta = ipc.sendSync 'ATOM_BROWSER_CURRENT_WEB_CONTENTS'
+  webContentsCache = metaToValue meta
 
 # Get a global object in browser.
 exports.getGlobal = (name) ->
-  meta = ipc.sendChannelSync 'ATOM_BROWSER_GLOBAL', name
+  meta = ipc.sendSync 'ATOM_BROWSER_GLOBAL', name
   metaToValue meta
 
 # Get the process object in browser.
@@ -129,3 +157,8 @@ exports.createFunctionWithReturnValue = (returnValue) ->
   func = -> returnValue
   v8Util.setHiddenValue func, 'returnValue', true
   func
+
+# Get the guest WebContents from guestInstanceId.
+exports.getGuestWebContents = (guestInstanceId) ->
+  meta = ipc.sendSync 'ATOM_BROWSER_GUEST_WEB_CONTENTS', guestInstanceId
+  metaToValue meta

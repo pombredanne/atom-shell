@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,8 @@
 #include <string>
 
 #include "atom/common/native_mate_converters/accelerator_converter.h"
+#include "atom/common/native_mate_converters/callback.h"
 #include "base/stl_util.h"
-#include "native_mate/callback.h"
 #include "native_mate/dictionary.h"
 
 #include "atom/common/node_includes.h"
@@ -86,8 +86,8 @@ mate::Handle<GlobalShortcut> GlobalShortcut::Create(v8::Isolate* isolate) {
 
 namespace {
 
-void Initialize(v8::Handle<v8::Object> exports, v8::Handle<v8::Value> unused,
-                v8::Handle<v8::Context> context, void* priv) {
+void Initialize(v8::Local<v8::Object> exports, v8::Local<v8::Value> unused,
+                v8::Local<v8::Context> context, void* priv) {
   v8::Isolate* isolate = context->GetIsolate();
   mate::Dictionary dict(isolate, exports);
   dict.Set("globalShortcut", atom::api::GlobalShortcut::Create(isolate));

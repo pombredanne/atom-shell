@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -33,7 +33,10 @@ class NotifyIcon : public TrayIcon {
   // Handles a click event from the user - if |left_button_click| is true and
   // there is a registered observer, passes the click event to the observer,
   // otherwise displays the context menu if there is one.
-  void HandleClickEvent(const gfx::Point& cursor_pos, bool left_button_click);
+  void HandleClickEvent(const gfx::Point& cursor_pos,
+                        int modifiers,
+                        bool left_button_click,
+                        bool double_button_click);
 
   // Re-creates the status tray icon now after the taskbar has been created.
   void ResetIcon();
@@ -43,10 +46,14 @@ class NotifyIcon : public TrayIcon {
   UINT message_id() const { return message_id_; }
 
   // Overridden from TrayIcon:
-  virtual void SetImage(const gfx::ImageSkia& image) OVERRIDE;
-  virtual void SetPressedImage(const gfx::ImageSkia& image) OVERRIDE;
-  virtual void SetToolTip(const std::string& tool_tip) OVERRIDE;
-  virtual void SetContextMenu(ui::SimpleMenuModel* menu_model) OVERRIDE;
+  void SetImage(const gfx::Image& image) override;
+  void SetPressedImage(const gfx::Image& image) override;
+  void SetToolTip(const std::string& tool_tip) override;
+  void DisplayBalloon(const gfx::Image& icon,
+                      const base::string16& title,
+                      const base::string16& contents) override;
+  void PopUpContextMenu(const gfx::Point& pos) override;
+  void SetContextMenu(ui::SimpleMenuModel* menu_model) override;
 
  private:
   void InitIconData(NOTIFYICONDATA* icon_data);
@@ -66,8 +73,15 @@ class NotifyIcon : public TrayIcon {
   // The currently-displayed icon for the window.
   base::win::ScopedHICON icon_;
 
+  // The currently-displayed icon for the notification balloon.
+  base::win::ScopedHICON balloon_icon_;
+
   // The context menu.
   ui::SimpleMenuModel* menu_model_;
+
+  // A hash of the app model ID
+  GUID tray_app_id_hash_;
+  bool has_tray_app_id_hash_;
 
   DISALLOW_COPY_AND_ASSIGN(NotifyIcon);
 };

@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include "atom/browser/native_window.h"
 #include "atom/browser/window_list.h"
 #include "atom/common/atom_version.h"
+#include "brightray/common/application_info.h"
 
 namespace atom {
 
@@ -24,12 +25,18 @@ void Browser::Focus() {
   }
 }
 
+void Browser::AddRecentDocument(const base::FilePath& path) {
+}
+
+void Browser::ClearRecentDocuments() {
+}
+
 std::string Browser::GetExecutableFileVersion() const {
-  return ATOM_VERSION_STRING;
+  return brightray::GetApplicationVersion();
 }
 
 std::string Browser::GetExecutableFileProductName() const {
-  return "Atom-Shell";
+  return brightray::GetApplicationName();
 }
 
 }  // namespace atom

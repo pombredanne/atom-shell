@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -60,6 +60,39 @@ const char kDarkTheme[] = "dark-theme";
 // Enable DirectWrite on Windows.
 const char kDirectWrite[] = "direct-write";
 
+// Enable plugins.
+const char kEnablePlugins[] = "enable-plugins";
+
+// Ppapi Flash path.
+const char kPpapiFlashPath[] = "ppapi-flash-path";
+
+// Ppapi Flash version.
+const char kPpapiFlashVersion[] = "ppapi-flash-version";
+
+// Instancd ID of guest WebContents.
+const char kGuestInstanceID[] = "guest-instance-id";
+
+// Script that will be loaded by guest WebContents before other scripts.
+const char kPreloadScript[] = "preload";
+
+// Like --preload, but the passed argument is an URL.
+const char kPreloadUrl[] = "preload-url";
+
+// Whether the window should be transparent.
+const char kTransparent[] = "transparent";
+
+// Window type hint.
+const char kType[] = "type";
+
+// Disable auto-hiding cursor.
+const char kDisableAutoHideCursor[] = "disable-auto-hide-cursor";
+
+// Use the OS X's standard window instead of the textured window.
+const char kStandardWindow[] = "standard-window";
+
+// Path to client certificate.
+const char kClientCertificate[] = "client-certificate";
+
 // Web runtime features.
 const char kExperimentalFeatures[]       = "experimental-features";
 const char kExperimentalCanvasFeatures[] = "experimental-canvas-features";
@@ -67,6 +100,18 @@ const char kSubpixelFontScaling[]        = "subpixel-font-scaling";
 const char kOverlayScrollbars[]          = "overlay-scrollbars";
 const char kOverlayFullscreenVideo[]     = "overlay-fullscreen-video";
 const char kSharedWorker[]               = "shared-worker";
+
+// Set page visiblity to always visible.
+const char kPageVisibility[] = "page-visibility";
+
+// Disable HTTP cache.
+const char kDisableHttpCache[] = "disable-http-cache";
+
+// Register schemes to standard.
+const char kRegisterStandardSchemes[] = "register-standard-schemes";
+
+// The browser process app model ID
+const char kAppUserModelId[] = "app-user-model-id";
 
 }  // namespace switches
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -109,8 +109,12 @@ bool StringToAccelerator(const std::string& description,
         modifiers |= ui::EF_SHIFT_DOWN;
     } else if (tokens[i] == "ctrl" || tokens[i] == "control") {
       modifiers |= ui::EF_CONTROL_DOWN;
+    } else if (tokens[i] == "super") {
+      modifiers |= ui::EF_COMMAND_DOWN;
+#if defined(OS_MACOSX)
     } else if (tokens[i] == "cmd" || tokens[i] == "command") {
       modifiers |= ui::EF_COMMAND_DOWN;
+#endif
     } else if (tokens[i] == "commandorcontrol" || tokens[i] == "cmdorctrl") {
 #if defined(OS_MACOSX)
       modifiers |= ui::EF_COMMAND_DOWN;
@@ -121,6 +125,9 @@ bool StringToAccelerator(const std::string& description,
       modifiers |= ui::EF_ALT_DOWN;
     } else if (tokens[i] == "shift") {
       modifiers |= ui::EF_SHIFT_DOWN;
+    } else if (tokens[i] == "plus") {
+      modifiers |= ui::EF_SHIFT_DOWN;
+      key = ui::VKEY_OEM_PLUS;
     } else if (tokens[i] == "tab") {
       key = ui::VKEY_TAB;
     } else if (tokens[i] == "space") {
@@ -145,9 +152,9 @@ bool StringToAccelerator(const std::string& description,
       key = ui::VKEY_HOME;
     } else if (tokens[i] == "end") {
       key = ui::VKEY_END;
-    } else if (tokens[i] == "pagedown") {
-      key = ui::VKEY_PRIOR;
     } else if (tokens[i] == "pageup") {
+      key = ui::VKEY_PRIOR;
+    } else if (tokens[i] == "pagedown") {
       key = ui::VKEY_NEXT;
     } else if (tokens[i] == "esc" || tokens[i] == "escape") {
       key = ui::VKEY_ESCAPE;
@@ -168,7 +175,7 @@ bool StringToAccelerator(const std::string& description,
     } else if (tokens[i].size() > 1 && tokens[i][0] == 'f') {
       // F1 - F24.
       int n;
-      if (base::StringToInt(tokens[i].c_str() + 1, &n)) {
+      if (base::StringToInt(tokens[i].c_str() + 1, &n) && n > 0 && n < 25) {
         key = static_cast<ui::KeyboardCode>(ui::VKEY_F1 + n - 1);
       } else {
         LOG(WARNING) << tokens[i] << "is not available on keyboard";

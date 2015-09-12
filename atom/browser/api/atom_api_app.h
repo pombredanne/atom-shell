@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -9,13 +9,15 @@
 
 #include "atom/browser/api/event_emitter.h"
 #include "atom/browser/browser_observer.h"
-#include "base/callback.h"
+#include "content/public/browser/gpu_data_manager_observer.h"
 #include "native_mate/handle.h"
-
-class GURL;
 
 namespace base {
 class FilePath;
+}
+
+namespace mate {
+class Arguments;
 }
 
 namespace atom {
@@ -23,35 +25,49 @@ namespace atom {
 namespace api {
 
 class App : public mate::EventEmitter,
-            public BrowserObserver {
+            public BrowserObserver,
+            public content::GpuDataManagerObserver {
  public:
-  typedef base::Callback<void(std::string)> ResolveProxyCallback;
-
   static mate::Handle<App> Create(v8::Isolate* isolate);
 
  protected:
   App();
   virtual ~App();
 
-  // BrowserObserver implementations:
-  virtual void OnWillQuit(bool* prevent_default) OVERRIDE;
-  virtual void OnWindowAllClosed() OVERRIDE;
-  virtual void OnQuit() OVERRIDE;
-  virtual void OnOpenFile(bool* prevent_default,
-                          const std::string& file_path) OVERRIDE;
-  virtual void OnOpenURL(const std::string& url) OVERRIDE;
-  virtual void OnActivateWithNoOpenWindows() OVERRIDE;
-  virtual void OnWillFinishLaunching() OVERRIDE;
-  virtual void OnFinishLaunching() OVERRIDE;
+  // BrowserObserver:
+  void OnBeforeQuit(bool* prevent_default) override;
+  void OnWillQuit(bool* prevent_default) override;
+  void OnWindowAllClosed() override;
+  void OnQuit() override;
+  void OnOpenFile(bool* prevent_default, const std::string& file_path) override;
+  void OnOpenURL(const std::string& url) override;
+  void OnActivateWithNoOpenWindows() override;
+  void OnWillFinishLaunching() override;
+  void OnFinishLaunching() override;
+  void OnSelectCertificate(
+      content::WebContents* web_contents,
+      net::SSLCertRequestInfo* cert_request_info,
+      scoped_ptr<content::ClientCertificateDelegate> delegate) override;
 
-  // mate::Wrappable implementations:
-  virtual mate::ObjectTemplateBuilder GetObjectTemplateBuilder(
-      v8::Isolate* isolate);
+  // content::GpuDataManagerObserver:
+  void OnGpuProcessCrashed(base::TerminationStatus exit_code) override;
+
+  // mate::Wrappable:
+  mate::ObjectTemplateBuilder GetObjectTemplateBuilder(
+      v8::Isolate* isolate) override;
 
  private:
-  base::FilePath GetDataPath();
-  void ResolveProxy(const GURL& url, ResolveProxyCallback callback);
+  // Get/Set the pre-defined path in PathService.
+  base::FilePath GetPath(mate::Arguments* args, const std::string& name);
+  void SetPath(mate::Arguments* args,
+               const std::string& name,
+               const base::FilePath& path);
+
   void SetDesktopName(const std::string& desktop_name);
+  void SetAppUserModelId(const std::string& app_id);
+  v8::Local<v8::Value> DefaultSession(v8::Isolate* isolate);
+
+  v8::Global<v8::Value> default_session_;
 
   DISALLOW_COPY_AND_ASSIGN(App);
 };

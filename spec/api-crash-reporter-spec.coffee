@@ -5,6 +5,7 @@ url        = require 'url'
 remote     = require 'remote'
 formidable = require 'formidable'
 
+crashReporter = remote.require 'crash-reporter'
 BrowserWindow = remote.require 'browser-window'
 
 describe 'crash-reporter module', ->
@@ -14,6 +15,9 @@ describe 'crash-reporter module', ->
   beforeEach -> w = new BrowserWindow(show: false)
   afterEach -> w.destroy()
 
+  # It is not working on 64bit Windows.
+  return if process.platform is 'win32' and process.arch is 'x64'
+
   it 'should send minidump when renderer crashes', (done) ->
     @timeout 60000
     server = http.createServer (req, res) ->
@@ -21,8 +25,8 @@ describe 'crash-reporter module', ->
       process.throwDeprecation = false
       form.parse req, (error, fields, files) ->
         process.throwDeprecation = true
-        assert.equal fields['prod'], 'Atom-Shell'
-        assert.equal fields['ver'], process.versions['atom-shell']
+        assert.equal fields['prod'], 'Electron'
+        assert.equal fields['ver'], process.versions['electron']
         assert.equal fields['process_type'], 'renderer'
         assert.equal fields['platform'], process.platform
         assert.equal fields['extra1'], 'extra1'
@@ -32,13 +36,18 @@ describe 'crash-reporter module', ->
         assert.equal fields['_version'], require('remote').require('app').getVersion()
         assert files['upload_file_minidump']['name']?
 
-        res.end()
+        res.end('abc-123-def')
         server.close()
         done()
-    server.listen 0, '127.0.0.1', ->
+    # Server port is generated randomly for the first run, it will be reused
+    # when page is refreshed.
+    port = remote.process.port
+    server.listen port, '127.0.0.1', ->
       {port} = server.address()
+      remote.process.port = port
       url = url.format
         protocol: 'file'
         pathname: path.join fixtures, 'api', 'crash.html'
         search: "?port=#{port}"
+      crashReporter.start {'submitUrl': 'http://127.0.0.1:' + port}
       w.loadUrl url

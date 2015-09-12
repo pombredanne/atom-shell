@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -17,16 +17,16 @@ namespace api {
 class PowerMonitor : public mate::EventEmitter,
                      public base::PowerObserver {
  public:
-  static mate::Handle<PowerMonitor> Create(v8::Isolate* isolate);
+  static v8::Local<v8::Value> Create(v8::Isolate* isolate);
 
  protected:
   PowerMonitor();
   virtual ~PowerMonitor();
 
   // base::PowerObserver implementations:
-  virtual void OnPowerStateChange(bool on_battery_power) OVERRIDE;
-  virtual void OnSuspend() OVERRIDE;
-  virtual void OnResume() OVERRIDE;
+  void OnPowerStateChange(bool on_battery_power) override;
+  void OnSuspend() override;
+  void OnResume() override;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(PowerMonitor);

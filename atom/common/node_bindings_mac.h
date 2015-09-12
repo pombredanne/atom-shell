@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -15,13 +15,13 @@ class NodeBindingsMac : public NodeBindings {
   explicit NodeBindingsMac(bool is_browser);
   virtual ~NodeBindingsMac();
 
-  virtual void RunMessageLoop() OVERRIDE;
+  void RunMessageLoop() override;
 
  private:
   // Called when uv's watcher queue changes.
   static void OnWatcherQueueChanged(uv_loop_t* loop);
 
-  virtual void PollEvents() OVERRIDE;
+  void PollEvents() override;
 
   // Kqueue to poll for uv's backend fd.
   int kqueue_;

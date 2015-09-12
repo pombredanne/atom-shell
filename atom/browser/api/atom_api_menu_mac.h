@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -19,7 +19,8 @@ class MenuMac : public Menu {
  protected:
   MenuMac();
 
-  virtual void Popup(Window* window) OVERRIDE;
+  void Popup(Window* window) override;
+  void PopupAt(Window* window, int x, int y) override;
 
   base::scoped_nsobject<AtomMenuController> menu_controller_;
 

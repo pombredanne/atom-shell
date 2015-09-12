@@ -1,22 +1,52 @@
 # ipc (renderer)
 
 The `ipc` module provides a few methods so you can send synchronous and
-asynchronous messages to the browser, and also receive messages sent from
-browser. If you want to make use of modules of browser from renderer, you
-might consider using the [remote](remote.md) module.
+asynchronous messages from the render process (web page) to the main process.
+You can also receive replies from the main process.
 
-See [ipc (browser)](ipc-browser.md) for examples.
+**Note:** If you want to make use of modules in the main process from the renderer
+process, you might consider using the [remote](remote.md) module.
 
-## ipc.send(channel[, args...])
+See [ipc (main process)](ipc-main-process.md) for code examples.
 
-Send `args..` to the web page via `channel` in asynchronous message, the browser
-process can handle it by listening to the `channel` event of `ipc` module.
+## Methods
 
-## ipc.sendSync(channel[, args...])
+The `ipc` module has the following methods for sending messages:
 
-Send `args..` to the web page via `channel` in synchronous message, and returns
-the result sent from browser. The browser process can handle it by listening to
-the `channel` event of `ipc` module, and returns by setting `event.returnValue`.
+**Note:** When using these methods to send a `message` you must also listen
+for it in the main process with [`ipc (main process)`](ipc-main-process.md).
 
-**Note:** Usually developers should never use this API, since sending
-synchronous message would block the whole web page.
+### `ipc.send(channel[, arg1][, arg2][, ...])`
+
+* `channel` String - The event name.
+* `arg` (optional)
+
+Send an event to the main process asynchronously via a `channel`. Optionally,
+there can be a message: one or a series of arguments, `arg`, which can have any
+type. The main process handles it by listening for the `channel` event with
+`ipc`.
+
+### `ipc.sendSync(channel[, arg1][, arg2][, ...])`
+
+* `channel` String - The event name.
+* `arg` (optional)
+
+Send an event to the main process synchronously via a `channel`. Optionally,
+there can be a message: one or a series of arguments, `arg`, which can have any
+type. The main process handles it by listening for the `channel` event with
+`ipc`.
+
+The main process handles it by listening for the `channel` event with `ipc` and
+replies by setting the `event.returnValue`.
+
+**Note:** Sending a synchronous message will block the whole renderer process so
+using this method is not recommended.
+
+### `ipc.sendToHost(channel[, arg1][, arg2][, ...])`
+
+* `channel` String - The event name.
+* `arg` (optional)
+
+Like `ipc.send` but the event will be sent to the host page in a `<webview>`
+instead of the main process. Optionally, there can be a message: one or a series
+of arguments, `arg`, which can have any type.

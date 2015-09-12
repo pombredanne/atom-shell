@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -88,6 +88,10 @@ const gfx::FontList* MenuDelegate::GetLabelFontList(int id) const {
 
 bool MenuDelegate::IsCommandEnabled(int id) const {
   return delegate()->IsCommandEnabled(id);
+}
+
+bool MenuDelegate::IsCommandVisible(int id) const {
+  return delegate()->IsCommandVisible(id);
 }
 
 bool MenuDelegate::IsItemChecked(int id) const {

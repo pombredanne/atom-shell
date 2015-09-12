@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -28,8 +28,8 @@ class GlobalShortcut : public extensions::GlobalShortcutListener::Observer,
   virtual ~GlobalShortcut();
 
   // mate::Wrappable implementations:
-  virtual mate::ObjectTemplateBuilder GetObjectTemplateBuilder(
-      v8::Isolate* isolate) OVERRIDE;
+  mate::ObjectTemplateBuilder GetObjectTemplateBuilder(
+      v8::Isolate* isolate) override;
 
  private:
   typedef std::map<ui::Accelerator, base::Closure> AcceleratorCallbackMap;
@@ -41,7 +41,7 @@ class GlobalShortcut : public extensions::GlobalShortcutListener::Observer,
   void UnregisterAll();
 
   // GlobalShortcutListener::Observer implementation.
-  virtual void OnKeyPressed(const ui::Accelerator& accelerator) OVERRIDE;
+  void OnKeyPressed(const ui::Accelerator& accelerator) override;
 
   AcceleratorCallbackMap accelerator_callback_map_;
 

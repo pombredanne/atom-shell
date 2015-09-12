@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -27,7 +27,6 @@ void AtomJavaScriptDialogManager::RunBeforeUnloadDialog(
     const base::string16& message_text,
     bool is_reload,
     const DialogClosedCallback& callback) {
-
   bool prevent_reload = message_text.empty() ||
                         message_text == base::ASCIIToUTF16("false");
   callback.Run(!prevent_reload, message_text);

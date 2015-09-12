@@ -1,8 +1,12 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
 #include "atom/common/asar/archive.h"
+
+#if defined(OS_WIN)
+#include <io.h>
+#endif
 
 #include <string>
 #include <vector>
@@ -11,8 +15,9 @@
 #include "base/files/file.h"
 #include "base/logging.h"
 #include "base/pickle.h"
-#include "base/json/json_string_value_serializer.h"
+#include "base/json/json_reader.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/values.h"
 
 namespace asar {
 
@@ -49,6 +54,11 @@ bool GetChildNode(const base::DictionaryValue* root,
                   const std::string& name,
                   const base::DictionaryValue* dir,
                   const base::DictionaryValue** out) {
+  if (name == "") {
+    *out = root;
+    return true;
+  }
+
   const base::DictionaryValue* files = NULL;
   return GetFilesNode(root, dir, &files) &&
          files->GetDictionaryWithoutPathExpansion(name, out);
@@ -81,18 +91,22 @@ bool GetNodeFromPath(std::string path,
 bool FillFileInfoWithNode(Archive::FileInfo* info,
                           uint32 header_size,
                           const base::DictionaryValue* node) {
+  int size;
+  if (!node->GetInteger("size", &size))
+    return false;
+  info->size = static_cast<uint32>(size);
+
+  info->unpacked = false;
+  if (node->GetBoolean("unpacked", &info->unpacked) && info->unpacked)
+    return true;
+
   std::string offset;
   if (!node->GetString("offset", &offset))
     return false;
   if (!base::StringToUint64(offset, &info->offset))
     return false;
-
-  int size;
-  if (!node->GetInteger("size", &size))
-    return false;
-
   info->offset += header_size;
-  info->size = static_cast<uint32>(size);
+
   return true;
 }
 
@@ -100,6 +114,7 @@ bool FillFileInfoWithNode(Archive::FileInfo* info,
 
 Archive::Archive(const base::FilePath& path)
     : path_(path),
+      file_(path_, base::File::FLAG_OPEN | base::File::FLAG_READ),
       header_size_(0) {
 }
 
@@ -107,49 +122,50 @@ Archive::~Archive() {
 }
 
 bool Archive::Init() {
-  base::File file(path_, base::File::FLAG_OPEN | base::File::FLAG_READ);
-  if (!file.IsValid())
+  if (!file_.IsValid())
     return false;
 
   std::vector<char> buf;
   int len;
 
   buf.resize(8);
-  len = file.ReadAtCurrentPos(buf.data(), buf.size());
+  len = file_.ReadAtCurrentPos(buf.data(), buf.size());
   if (len != static_cast<int>(buf.size())) {
     PLOG(ERROR) << "Failed to read header size from " << path_.value();
     return false;
   }
 
   uint32 size;
-  if (!PickleIterator(Pickle(buf.data(), buf.size())).ReadUInt32(&size)) {
+  if (!base::PickleIterator(base::Pickle(buf.data(), buf.size())).ReadUInt32(
+          &size)) {
     LOG(ERROR) << "Failed to parse header size from " << path_.value();
     return false;
   }
 
   buf.resize(size);
-  len = file.ReadAtCurrentPos(buf.data(), buf.size());
+  len = file_.ReadAtCurrentPos(buf.data(), buf.size());
   if (len != static_cast<int>(buf.size())) {
     PLOG(ERROR) << "Failed to read header from " << path_.value();
     return false;
   }
 
   std::string header;
-  if (!PickleIterator(Pickle(buf.data(), buf.size())).ReadString(&header)) {
+  if (!base::PickleIterator(base::Pickle(buf.data(), buf.size())).ReadString(
+        &header)) {
     LOG(ERROR) << "Failed to parse header from " << path_.value();
     return false;
   }
 
   std::string error;
-  JSONStringValueSerializer serializer(&header);
-  base::Value* value = serializer.Deserialize(NULL, &error);
+  base::JSONReader reader;
+  scoped_ptr<base::Value> value(reader.ReadToValue(header));
   if (!value || !value->IsType(base::Value::TYPE_DICTIONARY)) {
     LOG(ERROR) << "Failed to parse header: " << error;
     return false;
   }
 
   header_size_ = 8 + size;
-  header_.reset(static_cast<base::DictionaryValue*>(value));
+  header_.reset(static_cast<base::DictionaryValue*>(value.release()));
   return true;
 }
 
@@ -240,13 +256,32 @@ bool Archive::CopyFileOut(const base::FilePath& path, base::FilePath* out) {
   if (!GetFileInfo(path, &info))
     return false;
 
+  if (info.unpacked) {
+    *out = path_.AddExtension(FILE_PATH_LITERAL("unpacked")).Append(path);
+    return true;
+  }
+
   scoped_ptr<ScopedTemporaryFile> temp_file(new ScopedTemporaryFile);
-  if (!temp_file->InitFromFile(path_, info.offset, info.size))
+  if (!temp_file->InitFromFile(&file_, info.offset, info.size))
     return false;
 
   *out = temp_file->path();
   external_files_.set(path, temp_file.Pass());
   return true;
+}
+
+int Archive::GetFD() const {
+  if (!file_.IsValid())
+    return -1;
+
+#if defined(OS_WIN)
+  return
+    _open_osfhandle(reinterpret_cast<intptr_t>(file_.GetPlatformFile()), 0);
+#elif defined(OS_POSIX)
+  return file_.GetPlatformFile();
+#else
+  return -1;
+#endif
 }
 
 }  // namespace asar

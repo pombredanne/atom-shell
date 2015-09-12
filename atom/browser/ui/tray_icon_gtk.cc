@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/ui/libgtk2ui/app_indicator_icon.h"
 #include "chrome/browser/ui/libgtk2ui/gtk2_status_icon.h"
+#include "ui/gfx/image/image.h"
 
 namespace atom {
 
@@ -17,23 +18,19 @@ TrayIconGtk::TrayIconGtk() {
 TrayIconGtk::~TrayIconGtk() {
 }
 
-void TrayIconGtk::SetImage(const gfx::ImageSkia& image) {
+void TrayIconGtk::SetImage(const gfx::Image& image) {
   if (icon_) {
-    icon_->SetImage(image);
+    icon_->SetImage(image.AsImageSkia());
     return;
   }
 
   base::string16 empty;
   if (libgtk2ui::AppIndicatorIcon::CouldOpen())
-    icon_.reset(
-        new libgtk2ui::AppIndicatorIcon(base::GenerateGUID(), image, empty));
+    icon_.reset(new libgtk2ui::AppIndicatorIcon(
+        base::GenerateGUID(), image.AsImageSkia(), empty));
   else
-    icon_.reset(new libgtk2ui::Gtk2StatusIcon(image, empty));
+    icon_.reset(new libgtk2ui::Gtk2StatusIcon(image.AsImageSkia(), empty));
   icon_->set_delegate(this);
-}
-
-void TrayIconGtk::SetPressedImage(const gfx::ImageSkia& image) {
-  icon_->SetPressedImage(image);
 }
 
 void TrayIconGtk::SetToolTip(const std::string& tool_tip) {
@@ -45,6 +42,7 @@ void TrayIconGtk::SetContextMenu(ui::SimpleMenuModel* menu_model) {
 }
 
 void TrayIconGtk::OnClick() {
+  NotifyClicked();
 }
 
 bool TrayIconGtk::HasClickAction() {

@@ -1,20 +1,32 @@
+## Guides
+
+* [Application Distribution](tutorial/application-distribution.md)
+* [Application Packaging](tutorial/application-packaging.md)
+* [Using Native Node Modules](tutorial/using-native-node-modules.md)
+* [Debugging Main Process](tutorial/debugging-main-process.md)
+* [Using Selenium and WebDriver](tutorial/using-selenium-and-webdriver.md)
+* [DevTools Extension](tutorial/devtools-extension.md)
+* [Using Pepper Flash Plugin](tutorial/using-pepper-flash-plugin.md)
+
 ## Tutorials
 
-* [Quick start](tutorial/quick-start.md)
-* [Application distribution](tutorial/application-distribution.md)
-* [Application packaging](tutorial/application-packaging.md)
-* [Using native node modules](tutorial/using-native-node-modules.md)
-* [Debugging browser process](tutorial/debugging-browser-process.md)
-* [Using Selenium and WebDriver](tutorial/using-selenium-and-webdriver.md)
-* [DevTools extension](tutorial/devtools-extension.md)
+* [Quick Start](tutorial/quick-start.md)
+* [Desktop Environment Integration](tutorial/desktop-environment-integration.md)
+* [Online/Offline Event Detection](tutorial/online-offline-events.md)
 
-## API references
+## API References
 
 * [Synopsis](api/synopsis.md)
-* [Process object](api/process.md)
-* [Supported Chrome command line switches](api/chrome-command-line-switches.md)
+* [Process Object](api/process.md)
+* [Supported Chrome Command Line Switches](api/chrome-command-line-switches.md)
 
-Modules for browser side:
+### Custom DOM Elements:
+
+* [`File` Object](api/file-object.md)
+* [`<webview>` Tag](api/web-view-tag.md)
+* [`window.open` Function](api/window-open.md)
+
+### Modules for the Main Process:
 
 * [app](api/app.md)
 * [auto-updater](api/auto-updater.md)
@@ -22,33 +34,37 @@ Modules for browser side:
 * [content-tracing](api/content-tracing.md)
 * [dialog](api/dialog.md)
 * [global-shortcut](api/global-shortcut.md)
-* [ipc (browser)](api/ipc-browser.md)
+* [ipc (main process)](api/ipc-main-process.md)
 * [menu](api/menu.md)
 * [menu-item](api/menu-item.md)
 * [power-monitor](api/power-monitor.md)
+* [power-save-blocker](api/power-save-blocker.md)
 * [protocol](api/protocol.md)
+* [session](api/session.md)
+* [web-contents](api/web-contents.md)
 * [tray](api/tray.md)
 
-Modules for web page:
+### Modules for the Renderer Process (Web Page):
 
 * [ipc (renderer)](api/ipc-renderer.md)
 * [remote](api/remote.md)
-* [web-view](api/web-view.md)
+* [web-frame](api/web-frame.md)
 
-Modules for both sides:
+### Modules for Both Processes:
 
 * [clipboard](api/clipboard.md)
 * [crash-reporter](api/crash-reporter.md)
+* [native-image](api/native-image.md)
 * [screen](api/screen.md)
 * [shell](api/shell.md)
 
 ## Development
 
-* [Coding style](development/coding-style.md)
-* [Source code directory structure](development/source-code-directory-structure.md)
-* [Technical differences to node-webkit](development/atom-shell-vs-node-webkit.md)
-* [How node.js is integrated into atom-shell](https://speakerdeck.com/zcbenz/practice-on-embedding-node-dot-js-into-atom-editor) (slides) ([中文版](http://2014.jsconf.cn/slides/Practice%20on%20embedding%20Node.js%20into%20Atom%20Editor.pdf
-))
-* [Build instructions (Mac)](development/build-instructions-mac.md)
-* [Build instructions (Windows)](development/build-instructions-windows.md)
-* [Build instructions (Linux)](development/build-instructions-linux.md)
+* [Coding Style](development/coding-style.md)
+* [Source Code Directory Structure](development/source-code-directory-structure.md)
+* [Technical Differences to NW.js (formerly node-webkit)](development/atom-shell-vs-node-webkit.md)
+* [Build System Overview](development/build-system-overview.md)
+* [Build Instructions (Mac)](development/build-instructions-osx.md)
+* [Build Instructions (Windows)](development/build-instructions-windows.md)
+* [Build Instructions (Linux)](development/build-instructions-linux.md)
+* [Setting Up Symbol Server in debugger](development/setting-up-symbol-server.md)

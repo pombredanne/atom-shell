@@ -7,29 +7,20 @@ describe 'third-party module', ->
   fixtures = path.join __dirname, 'fixtures'
   temp.track()
 
-  describe 'runas', ->
-    it 'can be required in renderer', ->
-      require 'runas'
+  # If the test is executed with the debug build on Windows, we will skip it
+  # because native modules don't work with the debug build (see issue #2558).
+  if process.platform isnt 'win32' or
+      process.execPath.toLowerCase().indexOf('\\out\\d\\') is -1
+    describe 'runas', ->
+      it 'can be required in renderer', ->
+        require 'runas'
 
-    it 'can be required in node binary', (done) ->
-      runas = path.join fixtures, 'module', 'runas.js'
-      child = require('child_process').fork runas
-      child.on 'message', (msg) ->
-        assert.equal msg, 'ok'
-        done()
-
-  describe 'pathwatcher', ->
-    it 'emits file events correctly', (done) ->
-      pathwatcher = require 'pathwatcher'
-      temp.mkdir 'dir', (err, dir) ->
-        return done() if err
-        file = path.join dir, 'file'
-        fs.writeFileSync file, 'content'
-        watcher = pathwatcher.watch file, (event) ->
-          assert.equal event, 'change'
-          watcher.close()
+      it 'can be required in node binary', (done) ->
+        runas = path.join fixtures, 'module', 'runas.js'
+        child = require('child_process').fork runas
+        child.on 'message', (msg) ->
+          assert.equal msg, 'ok'
           done()
-        fs.writeFileSync file, 'content2'
 
   describe 'q', ->
     Q = require 'q'

@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -16,7 +16,7 @@ class NodeBindingsWin : public NodeBindings {
   virtual ~NodeBindingsWin();
 
  private:
-  virtual void PollEvents() OVERRIDE;
+  void PollEvents() override;
 
   DISALLOW_COPY_AND_ASSIGN(NodeBindingsWin);
 };

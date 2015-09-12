@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -15,22 +15,21 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
-#include "brightray/browser/default_web_contents_delegate.h"
-#include "brightray/browser/inspectable_web_contents_delegate.h"
-#include "brightray/browser/inspectable_web_contents_impl.h"
-#include "content/public/browser/notification_registrar.h"
-#include "content/public/browser/notification_observer.h"
-#include "native_mate/persistent_dictionary.h"
+#include "brightray/browser/inspectable_web_contents_view_delegate.h"
+#include "content/public/browser/readback_types.h"
+#include "content/public/browser/web_contents_observer.h"
+#include "content/public/browser/web_contents_user_data.h"
+#include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_skia.h"
 
-namespace base {
-class CommandLine;
+class SkRegion;
+
+namespace brightray {
+class InspectableWebContents;
 }
 
 namespace content {
-class BrowserContext;
-class WebContents;
-struct WebPreferences;
+struct NativeWebKeyboardEvent;
 }
 
 namespace gfx {
@@ -49,16 +48,12 @@ class MenuModel;
 
 namespace atom {
 
-class AtomJavaScriptDialogManager;
 struct DraggableRegion;
 
-class NativeWindow : public brightray::DefaultWebContentsDelegate,
-                     public brightray::InspectableWebContentsDelegate,
-                     public content::WebContentsObserver,
-                     public content::NotificationObserver {
+class NativeWindow : public content::WebContentsObserver,
+                     public brightray::InspectableWebContentsViewDelegate {
  public:
-  typedef base::Callback<void(const std::vector<unsigned char>& buffer)>
-      CapturePageCallback;
+  using CapturePageCallback = base::Callback<void(const SkBitmap& bitmap)>;
 
   class DialogScope {
    public:
@@ -83,24 +78,22 @@ class NativeWindow : public brightray::DefaultWebContentsDelegate,
 
   // Create window with existing WebContents, the caller is responsible for
   // managing the window's live.
-  static NativeWindow* Create(content::WebContents* web_contents,
-                              const mate::Dictionary& options);
+  static NativeWindow* Create(
+      brightray::InspectableWebContents* inspectable_web_contents,
+      const mate::Dictionary& options);
 
-  // Create window with new WebContents, the caller is responsible for
-  // managing the window's live.
-  static NativeWindow* Create(const mate::Dictionary& options);
-
-  // Find a window from its process id and routing id.
-  static NativeWindow* FromRenderView(int process_id, int routing_id);
+  // Find a window from its WebContents
+  static NativeWindow* FromWebContents(content::WebContents* web_contents);
 
   void InitFromOptions(const mate::Dictionary& options);
 
   virtual void Close() = 0;
   virtual void CloseImmediately() = 0;
-  virtual void Move(const gfx::Rect& pos) = 0;
+  virtual bool IsClosed() const { return is_closed_; }
   virtual void Focus(bool focus) = 0;
   virtual bool IsFocused() = 0;
   virtual void Show() = 0;
+  virtual void ShowInactive() = 0;
   virtual void Hide() = 0;
   virtual bool IsVisible() = 0;
   virtual void Maximize() = 0;
@@ -109,10 +102,14 @@ class NativeWindow : public brightray::DefaultWebContentsDelegate,
   virtual void Minimize() = 0;
   virtual void Restore() = 0;
   virtual bool IsMinimized() = 0;
-  virtual void SetFullscreen(bool fullscreen) = 0;
-  virtual bool IsFullscreen() = 0;
-  virtual void SetSize(const gfx::Size& size) = 0;
-  virtual gfx::Size GetSize() = 0;
+  virtual void SetFullScreen(bool fullscreen) = 0;
+  virtual bool IsFullscreen() const = 0;
+  virtual void SetBounds(const gfx::Rect& bounds) = 0;
+  virtual gfx::Rect GetBounds() = 0;
+  virtual void SetSize(const gfx::Size& size);
+  virtual gfx::Size GetSize();
+  virtual void SetPosition(const gfx::Point& position);
+  virtual gfx::Point GetPosition();
   virtual void SetContentSize(const gfx::Size& size) = 0;
   virtual gfx::Size GetContentSize() = 0;
   virtual void SetMinimumSize(const gfx::Size& size) = 0;
@@ -124,8 +121,6 @@ class NativeWindow : public brightray::DefaultWebContentsDelegate,
   virtual void SetAlwaysOnTop(bool top) = 0;
   virtual bool IsAlwaysOnTop() = 0;
   virtual void Center() = 0;
-  virtual void SetPosition(const gfx::Point& position) = 0;
-  virtual gfx::Point GetPosition() = 0;
   virtual void SetTitle(const std::string& title) = 0;
   virtual std::string GetTitle() = 0;
   virtual void FlashFrame(bool flash) = 0;
@@ -139,14 +134,17 @@ class NativeWindow : public brightray::DefaultWebContentsDelegate,
   virtual void SetMenu(ui::MenuModel* menu);
   virtual bool HasModalDialog();
   virtual gfx::NativeWindow GetNativeWindow() = 0;
+
+  // Taskbar/Dock APIs.
   virtual void SetProgressBar(double progress) = 0;
+  virtual void SetOverlayIcon(const gfx::Image& overlay,
+                              const std::string& description) = 0;
 
-  virtual bool IsClosed() const { return is_closed_; }
-  virtual void OpenDevTools();
-  virtual void CloseDevTools();
-  virtual bool IsDevToolsOpened();
-  virtual void InspectElement(int x, int y);
+  // Workspace APIs.
+  virtual void SetVisibleOnAllWorkspaces(bool visible) = 0;
+  virtual bool IsVisibleOnAllWorkspaces() = 0;
 
+  // Webview APIs.
   virtual void FocusOnWebView();
   virtual void BlurWebView();
   virtual bool IsWebViewFocused();
@@ -156,103 +154,114 @@ class NativeWindow : public brightray::DefaultWebContentsDelegate,
   virtual void CapturePage(const gfx::Rect& rect,
                            const CapturePageCallback& callback);
 
-  // Print current page.
-  virtual void Print(bool silent, bool print_background);
+  // Show popup dictionary.
+  virtual void ShowDefinitionForSelection();
 
-  // The same with closing a tab in a real browser.
-  //
-  // Should be called by platform code when user want to close the window.
-  virtual void CloseWebContents();
+  // Toggle the menu bar.
+  virtual void SetAutoHideMenuBar(bool auto_hide);
+  virtual bool IsMenuBarAutoHide();
+  virtual void SetMenuBarVisibility(bool visible);
+  virtual bool IsMenuBarVisible();
 
-  // Destroy the WebContents immediately.
-  virtual void DestroyWebContents();
+  // Set the aspect ratio when resizing window.
+  double GetAspectRatio();
+  gfx::Size GetAspectRatioExtraSize();
+  void SetAspectRatio(double aspect_ratio, const gfx::Size& extra_size);
 
   base::WeakPtr<NativeWindow> GetWeakPtr() {
     return weak_factory_.GetWeakPtr();
   }
 
-  content::WebContents* GetWebContents() const;
-  content::WebContents* GetDevToolsWebContents() const;
+  // Requests the WebContents to close, can be cancelled by the page.
+  virtual void RequestToClosePage();
 
-  // Called when renderer process is going to be started.
-  void AppendExtraCommandLineSwitches(base::CommandLine* command_line,
-                                      int child_process_id);
-  void OverrideWebkitPrefs(const GURL& url, content::WebPreferences* prefs);
+  // Methods called by the WebContents.
+  virtual void CloseContents(content::WebContents* source);
+  virtual void RendererUnresponsive(content::WebContents* source);
+  virtual void RendererResponsive(content::WebContents* source);
+  virtual void HandleKeyboardEvent(
+      content::WebContents*,
+      const content::NativeWebKeyboardEvent& event) {}
 
   // Public API used by platform-dependent delegates and observers to send UI
   // related notifications.
   void NotifyWindowClosed();
   void NotifyWindowBlur();
   void NotifyWindowFocus();
+  void NotifyWindowMaximize();
+  void NotifyWindowUnmaximize();
+  void NotifyWindowMinimize();
+  void NotifyWindowRestore();
+  void NotifyWindowMove();
+  void NotifyWindowResize();
+  void NotifyWindowMoved();
+  void NotifyWindowEnterFullScreen();
+  void NotifyWindowLeaveFullScreen();
+  void NotifyWindowEnterHtmlFullScreen();
+  void NotifyWindowLeaveHtmlFullScreen();
+  void NotifyWindowExecuteWindowsCommand(const std::string& command);
 
   void AddObserver(NativeWindowObserver* obs) {
     observers_.AddObserver(obs);
   }
-
   void RemoveObserver(NativeWindowObserver* obs) {
     observers_.RemoveObserver(obs);
   }
 
+  brightray::InspectableWebContents* inspectable_web_contents() const {
+    return inspectable_web_contents_;
+  }
+
   bool has_frame() const { return has_frame_; }
+  bool transparent() const { return transparent_; }
+  SkRegion* draggable_region() const { return draggable_region_.get(); }
+  bool enable_larger_than_screen() const { return enable_larger_than_screen_; }
+  gfx::ImageSkia icon() const { return icon_; }
 
   void set_has_dialog_attached(bool has_dialog_attached) {
     has_dialog_attached_ = has_dialog_attached;
   }
 
  protected:
-  explicit NativeWindow(content::WebContents* web_contents,
-                        const mate::Dictionary& options);
+  NativeWindow(brightray::InspectableWebContents* inspectable_web_contents,
+               const mate::Dictionary& options);
 
-  brightray::InspectableWebContentsImpl* inspectable_web_contents() const {
-    return static_cast<brightray::InspectableWebContentsImpl*>(
-        inspectable_web_contents_.get());
-  }
+  // brightray::InspectableWebContentsViewDelegate:
+  void DevToolsFocused() override;
+  void DevToolsOpened() override;
+  void DevToolsClosed() override;
 
+  // content::WebContentsObserver:
+  void RenderViewCreated(content::RenderViewHost* render_view_host) override;
+  void BeforeUnloadDialogCancelled() override;
+  void TitleWasSet(content::NavigationEntry* entry, bool explicit_set) override;
+  bool OnMessageReceived(const IPC::Message& message) override;
+
+ private:
   // Called when the window needs to update its draggable region.
-  virtual void UpdateDraggableRegions(
-      const std::vector<DraggableRegion>& regions) = 0;
+  void UpdateDraggableRegions(
+      const std::vector<DraggableRegion>& regions);
 
-  // Implementations of content::WebContentsDelegate.
-  virtual content::WebContents* OpenURLFromTab(
-      content::WebContents* source,
-      const content::OpenURLParams& params) OVERRIDE;
-  virtual content::JavaScriptDialogManager*
-      GetJavaScriptDialogManager() OVERRIDE;
-  virtual void BeforeUnloadFired(content::WebContents* tab,
-                                 bool proceed,
-                                 bool* proceed_to_fire_unload) OVERRIDE;
-  virtual void RequestToLockMouse(content::WebContents* web_contents,
-                                  bool user_gesture,
-                                  bool last_unlocked_by_target) OVERRIDE;
-  virtual bool CanOverscrollContent() const OVERRIDE;
-  virtual void ActivateContents(content::WebContents* contents) OVERRIDE;
-  virtual void DeactivateContents(content::WebContents* contents) OVERRIDE;
-  virtual void MoveContents(content::WebContents* source,
-                            const gfx::Rect& pos) OVERRIDE;
-  virtual void CloseContents(content::WebContents* source) OVERRIDE;
-  virtual bool IsPopupOrPanel(
-      const content::WebContents* source) const OVERRIDE;
-  virtual void RendererUnresponsive(content::WebContents* source) OVERRIDE;
-  virtual void RendererResponsive(content::WebContents* source) OVERRIDE;
+  // Schedule a notification unresponsive event.
+  void ScheduleUnresponsiveEvent(int ms);
 
-  // Implementations of content::WebContentsObserver.
-  virtual void BeforeUnloadFired(const base::TimeTicks& proceed_time) OVERRIDE;
-  virtual bool OnMessageReceived(const IPC::Message& message) OVERRIDE;
+  // Dispatch unresponsive event to observers.
+  void NotifyWindowUnresponsive();
 
-  // Implementations of content::NotificationObserver.
-  virtual void Observe(int type,
-                       const content::NotificationSource& source,
-                       const content::NotificationDetails& details) OVERRIDE;
-
-  // Implementations of brightray::InspectableWebContentsDelegate.
-  virtual void DevToolsSaveToFile(const std::string& url,
-                                  const std::string& content,
-                                  bool save_as) OVERRIDE;
-  virtual void DevToolsAppendToFile(const std::string& url,
-                                    const std::string& content) OVERRIDE;
+  // Called when CapturePage has done.
+  void OnCapturePageDone(const CapturePageCallback& callback,
+                         const SkBitmap& bitmap,
+                         content::ReadbackResponse response);
 
   // Whether window has standard frame.
   bool has_frame_;
+
+  // Whether window is transparent.
+  bool transparent_;
+
+  // For custom drag, the whole window is non-draggable and the draggable region
+  // has to been explicitly provided.
+  scoped_ptr<SkRegion> draggable_region_;  // used in custom drag.
 
   // Whether window can be resized larger than screen.
   bool enable_larger_than_screen_;
@@ -260,35 +269,8 @@ class NativeWindow : public brightray::DefaultWebContentsDelegate,
   // Window icon.
   gfx::ImageSkia icon_;
 
- private:
-  // Schedule a notification unresponsive event.
-  void ScheduleUnresponsiveEvent(int ms);
-
-  // Dispatch unresponsive event to observers.
-  void NotifyWindowUnresponsive();
-
-  // Call a function in devtools.
-  void CallDevToolsFunction(const std::string& function_name,
-                            const base::Value* arg1 = NULL,
-                            const base::Value* arg2 = NULL,
-                            const base::Value* arg3 = NULL);
-
-  // Called when CapturePage has done.
-  void OnCapturePageDone(const CapturePageCallback& callback,
-                         bool succeed,
-                         const SkBitmap& bitmap);
-
-  // Notification manager.
-  content::NotificationRegistrar registrar_;
-
-  // Observers of this window.
-  ObserverList<NativeWindowObserver> observers_;
-
   // The windows has been closed.
   bool is_closed_;
-
-  // The security token of iframe.
-  std::string node_integration_;
 
   // There is a dialog that has been attached to window.
   bool has_dialog_attached_;
@@ -297,26 +279,35 @@ class NativeWindow : public brightray::DefaultWebContentsDelegate,
   // it should be cancelled when we can prove that the window is responsive.
   base::CancelableClosure window_unresposive_closure_;
 
-  // Web preferences.
-  mate::PersistentDictionary web_preferences_;
+  // Used to maintain the aspect ratio of a view which is inside of the
+  // content view.
+  double aspect_ratio_;
+  gfx::Size aspect_ratio_extraSize_;
 
-  // Page's default zoom factor.
-  double zoom_factor_;
+  // The page this window is viewing.
+  brightray::InspectableWebContents* inspectable_web_contents_;
+
+  // Observers of this window.
+  base::ObserverList<NativeWindowObserver> observers_;
 
   base::WeakPtrFactory<NativeWindow> weak_factory_;
 
-  scoped_ptr<AtomJavaScriptDialogManager> dialog_manager_;
-
-  // Notice that inspectable_web_contents_ must be placed after dialog_manager_,
-  // so we can make sure inspectable_web_contents_ is destroyed before
-  // dialog_manager_, otherwise a crash would happen.
-  scoped_ptr<brightray::InspectableWebContents> inspectable_web_contents_;
-
-  // Maps url to file path, used by the file requests sent from devtools.
-  typedef std::map<std::string, base::FilePath> PathsMap;
-  PathsMap saved_files_;
-
   DISALLOW_COPY_AND_ASSIGN(NativeWindow);
+};
+
+
+// This class provides a hook to get a NativeWindow from a WebContents.
+class NativeWindowRelay :
+    public content::WebContentsUserData<NativeWindowRelay> {
+ public:
+  explicit NativeWindowRelay(base::WeakPtr<NativeWindow> window)
+    : key(UserDataKey()), window(window) {}
+
+  void* key;
+  base::WeakPtr<NativeWindow> window;
+
+ private:
+  friend class content::WebContentsUserData<NativeWindow>;
 };
 
 }  // namespace atom

@@ -32,17 +32,11 @@ getExtensionInfoFromPath = (srcDirectory) ->
       startPage: page
       name: manifest.name
       srcDirectory: srcDirectory
-  extensionInfoMap[manifest.name]
+    extensionInfoMap[manifest.name]
 
-# Load persistented extensions.
-loadedExtensionsPath = path.join app.getDataPath(), 'DevTools Extensions'
-
-try
-  loadedExtensions = JSON.parse fs.readFileSync(loadedExtensionsPath)
-  loadedExtensions = [] unless Array.isArray loadedExtensions
-  # Preheat the extensionInfo cache.
-  getExtensionInfoFromPath srcDirectory for srcDirectory in loadedExtensions
-catch e
+# The loaded extensions cache and its persistent path.
+loadedExtensions = null
+loadedExtensionsPath = null
 
 # Persistent loaded extensions.
 app.on 'will-quit', ->
@@ -59,23 +53,36 @@ app.once 'ready', ->
   protocol = require 'protocol'
   BrowserWindow = require 'browser-window'
 
+  # Load persistented extensions.
+  loadedExtensionsPath = path.join app.getDataPath(), 'DevTools Extensions'
+
+  try
+    loadedExtensions = JSON.parse fs.readFileSync(loadedExtensionsPath)
+    loadedExtensions = [] unless Array.isArray loadedExtensions
+    # Preheat the extensionInfo cache.
+    getExtensionInfoFromPath srcDirectory for srcDirectory in loadedExtensions
+  catch e
+
   # The chrome-extension: can map a extension URL request to real file path.
-  protocol.registerProtocol 'chrome-extension', (request) ->
+  chromeExtensionHandler = (request, callback) ->
     parsed = url.parse request.url
-    return unless parsed.hostname and parsed.path?
-    return unless /extension-\d+/.test parsed.hostname
+    return callback() unless parsed.hostname and parsed.path?
+    return callback() unless /extension-\d+/.test parsed.hostname
 
     directory = getPathForHost parsed.hostname
-    return unless directory?
-    return new protocol.RequestFileJob(path.join(directory, parsed.path))
+    return callback() unless directory?
+    callback path.join(directory, parsed.path)
+  protocol.registerFileProtocol 'chrome-extension', chromeExtensionHandler, (error) ->
+    console.error 'Unable to register chrome-extension protocol' if error
 
   BrowserWindow::_loadDevToolsExtensions = (extensionInfoArray) ->
-    @devToolsWebContents?.executeJavaScript "WebInspector.addExtensions(#{JSON.stringify(extensionInfoArray)});"
+    @devToolsWebContents?.executeJavaScript "DevToolsAPI.addExtensions(#{JSON.stringify(extensionInfoArray)});"
 
   BrowserWindow.addDevToolsExtension = (srcDirectory) ->
     extensionInfo = getExtensionInfoFromPath srcDirectory
-    window._loadDevToolsExtensions [extensionInfo] for window in BrowserWindow.getAllWindows()
-    extensionInfo.name
+    if extensionInfo
+      window._loadDevToolsExtensions [extensionInfo] for window in BrowserWindow.getAllWindows()
+      extensionInfo.name
 
   BrowserWindow.removeDevToolsExtension = (name) ->
     delete extensionInfoMap[name]

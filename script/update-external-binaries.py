@@ -4,12 +4,13 @@ import errno
 import sys
 import os
 
+from lib.config import get_target_arch
 from lib.util import safe_mkdir, rm_rf, extract_zip, tempdir, download
 
 
-VERSION = 'v0.2.0'
+VERSION = 'v0.7.0'
 SOURCE_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-FRAMEWORKS_URL = 'https://github.com/atom/atom-shell-frameworks/releases' \
+FRAMEWORKS_URL = 'http://github.com/atom/atom-shell-frameworks/releases' \
                  '/download/' + VERSION
 
 
@@ -28,9 +29,8 @@ def main():
     download_and_unzip('ReactiveCocoa')
     download_and_unzip('Squirrel')
   elif sys.platform in ['cygwin', 'win32']:
-    download_and_unzip('atl')
-    download_and_unzip('directxsdk')
-    download_and_unzip('vs2012_crt')
+    download_and_unzip('directxsdk-' + get_target_arch())
+    download_and_unzip('vs2012-crt-' + get_target_arch())
 
   with open(version_file, 'w') as f:
     f.write(VERSION)
@@ -56,7 +56,7 @@ def download_and_unzip(framework):
 def download_framework(framework):
   filename = framework + '.zip'
   url = FRAMEWORKS_URL + '/' + filename
-  download_dir = tempdir(prefix='atom-shell-')
+  download_dir = tempdir(prefix='electron-')
   path = os.path.join(download_dir, filename)
 
   download('Download ' + framework, url, path)

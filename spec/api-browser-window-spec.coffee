@@ -2,8 +2,12 @@ assert = require 'assert'
 fs     = require 'fs'
 path   = require 'path'
 remote = require 'remote'
+http   = require 'http'
+url    = require 'url'
 
 BrowserWindow = remote.require 'browser-window'
+
+isCI = remote.process.argv[2] == '--ci'
 
 describe 'browser-window module', ->
   fixtures = path.resolve __dirname, 'fixtures'
@@ -56,9 +60,20 @@ describe 'browser-window module', ->
         done()
       w.loadUrl 'about:blank'
 
+    it 'should emit did-fail-load event', (done) ->
+      w.webContents.on 'did-fail-load', ->
+        done()
+      w.loadUrl 'file://a.txt'
+
   describe 'BrowserWindow.show()', ->
-    it 'should not focus window', ->
+    it 'should focus on window', ->
+      return if isCI
       w.show()
+      assert w.isFocused()
+
+  describe 'BrowserWindow.showInactive()', ->
+    it 'should not focus on window', ->
+      w.showInactive()
       assert !w.isFocused()
 
   describe 'BrowserWindow.focus()', ->
@@ -70,19 +85,40 @@ describe 'browser-window module', ->
   describe 'BrowserWindow.capturePage(rect, callback)', ->
     it 'calls the callback with a Buffer', (done) ->
       w.capturePage {x: 0, y: 0, width: 100, height: 100}, (image) ->
-        assert.equal image.constructor.name, 'Buffer'
+        assert.equal image.isEmpty(), true
         done()
 
   describe 'BrowserWindow.setSize(width, height)', ->
-    it 'sets the window size', ->
-      size = [400, 400]
+    it 'sets the window size', (done) ->
+      size = [300, 400]
+      w.once 'resize', ->
+        newSize = w.getSize()
+        assert.equal newSize[0], size[0]
+        assert.equal newSize[1], size[1]
+        done()
       w.setSize size[0], size[1]
-      after = w.getSize()
-      assert.equal after[0], size[0]
-      assert.equal after[1], size[1]
+
+  describe 'BrowserWindow.setPosition(x, y)', ->
+    it 'sets the window position', (done) ->
+      pos = [10, 10]
+      w.once 'move', ->
+        newPos = w.getPosition()
+        assert.equal newPos[0], pos[0]
+        assert.equal newPos[1], pos[1]
+        done()
+      w.setPosition pos[0], pos[1]
 
   describe 'BrowserWindow.setContentSize(width, height)', ->
     it 'sets the content size', ->
+      size = [400, 400]
+      w.setContentSize size[0], size[1]
+      after = w.getContentSize()
+      assert.equal after[0], size[0]
+      assert.equal after[1], size[1]
+
+    it 'works for framless window', ->
+      w.destroy()
+      w = new BrowserWindow(show: false, frame: false, width: 400, height: 400)
       size = [400, 400]
       w.setContentSize size[0], size[1]
       after = w.getContentSize()
@@ -93,6 +129,14 @@ describe 'browser-window module', ->
     it 'returns the window with id', ->
       assert.equal w.id, BrowserWindow.fromId(w.id).id
 
+  describe 'BrowserWindow.setResizable(resizable)', ->
+    it 'does not change window size for frameless window', ->
+      w.destroy()
+      w = new BrowserWindow(show: true, frame: false)
+      s = w.getSize()
+      w.setResizable not w.isResizable()
+      assert.deepEqual s, w.getSize()
+
   describe '"use-content-size" option', ->
     it 'make window created with content size when used', ->
       w.destroy()
@@ -102,6 +146,16 @@ describe 'browser-window module', ->
       assert.equal contentSize[1], 400
 
     it 'make window created with window size when not used', ->
+      size = w.getSize()
+      assert.equal size[0], 400
+      assert.equal size[1], 400
+
+    it 'works for framless window', ->
+      w.destroy()
+      w = new BrowserWindow(show: false, frame: false, width: 400, height: 400, 'use-content-size': true)
+      contentSize = w.getContentSize()
+      assert.equal contentSize[0], 400
+      assert.equal contentSize[1], 400
       size = w.getSize()
       assert.equal size[0], 400
       assert.equal size[1], 400
@@ -128,6 +182,37 @@ describe 'browser-window module', ->
       assert.equal after[0], size.width
       assert.equal after[1], size.height
 
+  describe '"web-preferences" option', ->
+    afterEach ->
+      remote.require('ipc').removeAllListeners('answer')
+
+    describe '"preload" option', ->
+      it 'loads the script before other scripts in window', (done) ->
+        preload = path.join fixtures, 'module', 'set-global.js'
+        remote.require('ipc').once 'answer', (event, test) ->
+          assert.equal(test, 'preload')
+          done()
+        w.destroy()
+        w = new BrowserWindow
+          show: false
+          'web-preferences':
+            preload: preload
+        w.loadUrl 'file://' + path.join(fixtures, 'api', 'preload.html')
+
+    describe '"node-integration" option', ->
+      it 'disables node integration when specified to false', (done) ->
+        preload = path.join fixtures, 'module', 'send-later.js'
+        remote.require('ipc').once 'answer', (event, test) ->
+          assert.equal(test, 'undefined')
+          done()
+        w.destroy()
+        w = new BrowserWindow
+          show: false
+          'web-preferences':
+            preload: preload
+            'node-integration': false
+        w.loadUrl 'file://' + path.join(fixtures, 'api', 'blank.html')
+
   describe 'beforeunload handler', ->
     it 'returning true would not prevent close', (done) ->
       w.on 'closed', ->
@@ -148,3 +233,56 @@ describe 'browser-window module', ->
       w.on 'onbeforeunload', ->
         done()
       w.loadUrl 'file://' + path.join(fixtures, 'api', 'close-beforeunload-empty-string.html')
+
+  describe 'new-window event', ->
+    return if isCI and process.platform is 'darwin'
+    it 'emits when window.open is called', (done) ->
+      w.webContents.once 'new-window', (e, url, frameName) ->
+        e.preventDefault()
+        assert.equal url, 'http://host/'
+        assert.equal frameName, 'host'
+        done()
+      w.loadUrl "file://#{fixtures}/pages/window-open.html"
+
+    it 'emits when link with target is called', (done) ->
+      w.webContents.once 'new-window', (e, url, frameName) ->
+        e.preventDefault()
+        assert.equal url, 'http://host/'
+        assert.equal frameName, 'target'
+        done()
+      w.loadUrl "file://#{fixtures}/pages/target-name.html"
+
+  describe 'maximize event', ->
+    return if isCI
+    it 'emits when window is maximized', (done) ->
+      @timeout 10000
+      w.once 'maximize', -> done()
+      w.show()
+      w.maximize()
+
+  describe 'unmaximize event', ->
+    return if isCI
+    it 'emits when window is unmaximized', (done) ->
+      @timeout 10000
+      w.once 'unmaximize', -> done()
+      w.show()
+      w.maximize()
+      w.unmaximize()
+
+  describe 'minimize event', ->
+    return if isCI
+    it 'emits when window is minimized', (done) ->
+      @timeout 10000
+      w.once 'minimize', -> done()
+      w.show()
+      w.minimize()
+
+  describe 'will-navigate event', ->
+    return if isCI and process.platform is 'darwin'
+    it 'emits when user starts a navigation', (done) ->
+      @timeout 10000
+      w.webContents.on 'will-navigate', (event, url) ->
+        event.preventDefault()
+        assert.equal url, 'https://www.github.com/'
+        done()
+      w.loadUrl "file://#{fixtures}/pages/will-navigate.html"

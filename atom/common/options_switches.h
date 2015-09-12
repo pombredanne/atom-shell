@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -36,6 +36,17 @@ extern const char kAutoHideMenuBar[];
 extern const char kEnableLargerThanScreen[];
 extern const char kDarkTheme[];
 extern const char kDirectWrite[];
+extern const char kEnablePlugins[];
+extern const char kPpapiFlashPath[];
+extern const char kPpapiFlashVersion[];
+extern const char kGuestInstanceID[];
+extern const char kPreloadScript[];
+extern const char kPreloadUrl[];
+extern const char kTransparent[];
+extern const char kType[];
+extern const char kDisableAutoHideCursor[];
+extern const char kStandardWindow[];
+extern const char kClientCertificate[];
 
 extern const char kExperimentalFeatures[];
 extern const char kExperimentalCanvasFeatures[];
@@ -43,6 +54,12 @@ extern const char kSubpixelFontScaling[];
 extern const char kOverlayScrollbars[];
 extern const char kOverlayFullscreenVideo[];
 extern const char kSharedWorker[];
+extern const char kPageVisibility[];
+
+extern const char kDisableHttpCache[];
+extern const char kRegisterStandardSchemes[];
+
+extern const char kAppUserModelId[];
 
 }  // namespace switches
 

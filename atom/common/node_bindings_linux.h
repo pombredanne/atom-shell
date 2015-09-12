@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -15,13 +15,13 @@ class NodeBindingsLinux : public NodeBindings {
   explicit NodeBindingsLinux(bool is_browser);
   virtual ~NodeBindingsLinux();
 
-  virtual void RunMessageLoop() OVERRIDE;
+  void RunMessageLoop() override;
 
  private:
   // Called when uv's watcher queue changes.
   static void OnWatcherQueueChanged(uv_loop_t* loop);
 
-  virtual void PollEvents() OVERRIDE;
+  void PollEvents() override;
 
   // Epoll to poll for uv's backend fd.
   int epoll_;

@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -17,25 +17,26 @@ class AtomMainDelegate : public brightray::MainDelegate {
 
  protected:
   // content::ContentMainDelegate:
-  virtual bool BasicStartupComplete(int* exit_code) OVERRIDE;
-  virtual void PreSandboxStartup() OVERRIDE;
-  virtual content::ContentBrowserClient* CreateContentBrowserClient() OVERRIDE;
-  virtual content::ContentRendererClient*
-      CreateContentRendererClient() OVERRIDE;
+  bool BasicStartupComplete(int* exit_code) override;
+  void PreSandboxStartup() override;
+  content::ContentBrowserClient* CreateContentBrowserClient() override;
+  content::ContentRendererClient* CreateContentRendererClient() override;
+  content::ContentUtilityClient* CreateContentUtilityClient() override;
 
   // brightray::MainDelegate:
-  virtual scoped_ptr<brightray::ContentClient> CreateContentClient() OVERRIDE;
-  virtual void AddDataPackFromPath(
-      ui::ResourceBundle* bundle, const base::FilePath& pak_dir) OVERRIDE;
+  scoped_ptr<brightray::ContentClient> CreateContentClient() override;
+  void AddDataPackFromPath(
+      ui::ResourceBundle* bundle, const base::FilePath& pak_dir) override;
 #if defined(OS_MACOSX)
-  virtual void OverrideChildProcessPath() OVERRIDE;
-  virtual void OverrideFrameworkBundlePath() OVERRIDE;
+  void OverrideChildProcessPath() override;
+  void OverrideFrameworkBundlePath() override;
 #endif
 
  private:
   brightray::ContentClient content_client_;
   scoped_ptr<content::ContentBrowserClient> browser_client_;
   scoped_ptr<content::ContentRendererClient> renderer_client_;
+  scoped_ptr<content::ContentUtilityClient> utility_client_;
 
   DISALLOW_COPY_AND_ASSIGN(AtomMainDelegate);
 };

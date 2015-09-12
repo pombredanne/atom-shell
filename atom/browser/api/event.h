@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -24,30 +24,25 @@ class Event : public Wrappable,
   void SetSenderAndMessage(content::WebContents* sender, IPC::Message* message);
 
   // event.PreventDefault().
-  void PreventDefault();
+  void PreventDefault(v8::Isolate* isolate);
 
   // event.sendReply(json), used for replying synchronous message.
   bool SendReply(const base::string16& json);
-
-  // Whether event.preventDefault() is called.
-  bool prevent_default() const { return prevent_default_; }
 
  protected:
   Event();
   virtual ~Event();
 
   // Wrappable implementations:
-  virtual ObjectTemplateBuilder GetObjectTemplateBuilder(v8::Isolate* isolate);
+  ObjectTemplateBuilder GetObjectTemplateBuilder(v8::Isolate* isolate) override;
 
   // content::WebContentsObserver implementations:
-  virtual void WebContentsDestroyed() OVERRIDE;
+  void WebContentsDestroyed() override;
 
  private:
   // Replyer for the synchronous messages.
   content::WebContents* sender_;
   IPC::Message* message_;
-
-  bool prevent_default_;
 
   DISALLOW_COPY_AND_ASSIGN(Event);
 };

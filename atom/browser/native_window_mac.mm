@@ -1,4 +1,4 @@
-// Copyright (c) 2013 GitHub, Inc. All rights reserved.
+// Copyright (c) 2013 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -11,27 +11,63 @@
 #include "atom/common/options_switches.h"
 #include "base/mac/mac_util.h"
 #include "base/strings/sys_string_conversions.h"
+#include "brightray/browser/inspectable_web_contents.h"
+#include "brightray/browser/inspectable_web_contents_view.h"
+#include "content/public/browser/browser_accessibility_state.h"
 #include "content/public/browser/native_web_keyboard_event.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "native_mate/dictionary.h"
-#include "vendor/brightray/browser/inspectable_web_contents.h"
-#include "vendor/brightray/browser/inspectable_web_contents_view.h"
 
-static const CGFloat kAtomWindowCornerRadius = 4.0;
+namespace {
 
-@interface NSView (PrivateMethods)
-- (CGFloat)roundedCornerRadius;
+// Prevents window from resizing during the scope.
+class ScopedDisableResize {
+ public:
+  ScopedDisableResize() { disable_resize_ = true; }
+  ~ScopedDisableResize() { disable_resize_ = false; }
+
+  static bool IsResizeDisabled() { return disable_resize_; }
+
+ private:
+  static bool disable_resize_;
+};
+
+bool ScopedDisableResize::disable_resize_ = false;
+
+}  // namespace
+
+// This view always takes the size of its superview. It is intended to be used
+// as a NSWindow's contentView.  It is needed because NSWindow's implementation
+// explicitly resizes the contentView at inopportune times.
+@interface FullSizeContentView : NSView
+@end
+
+@implementation FullSizeContentView
+
+// This method is directly called by NSWindow during a window resize on OSX
+// 10.10.0, beta 2. We must override it to prevent the content view from
+// shrinking.
+- (void)setFrameSize:(NSSize)size {
+  if ([self superview])
+    size = [[self superview] bounds].size;
+  [super setFrameSize:size];
+}
+
+// The contentView gets moved around during certain full-screen operations.
+// This is less than ideal, and should eventually be removed.
+- (void)viewDidMoveToSuperview {
+  [self setFrame:[[self superview] bounds]];
+}
+
 @end
 
 @interface AtomNSWindowDelegate : NSObject<NSWindowDelegate> {
  @private
   atom::NativeWindowMac* shell_;
-  BOOL acceptsFirstMouse_;
 }
 - (id)initWithShell:(atom::NativeWindowMac*)shell;
-- (void)setAcceptsFirstMouse:(BOOL)accept;
 @end
 
 @implementation AtomNSWindowDelegate
@@ -39,17 +75,12 @@ static const CGFloat kAtomWindowCornerRadius = 4.0;
 - (id)initWithShell:(atom::NativeWindowMac*)shell {
   if ((self = [super init])) {
     shell_ = shell;
-    acceptsFirstMouse_ = NO;
   }
   return self;
 }
 
-- (void)setAcceptsFirstMouse:(BOOL)accept {
-  acceptsFirstMouse_ = accept;
-}
-
 - (void)windowDidBecomeMain:(NSNotification*)notification {
-  content::WebContents* web_contents = shell_->GetWebContents();
+  content::WebContents* web_contents = shell_->web_contents();
   if (!web_contents)
     return;
 
@@ -63,7 +94,7 @@ static const CGFloat kAtomWindowCornerRadius = 4.0;
 }
 
 - (void)windowDidResignMain:(NSNotification*)notification {
-  content::WebContents* web_contents = shell_->GetWebContents();
+  content::WebContents* web_contents = shell_->web_contents();
   if (!web_contents)
     return;
 
@@ -76,9 +107,76 @@ static const CGFloat kAtomWindowCornerRadius = 4.0;
   shell_->NotifyWindowBlur();
 }
 
-- (void)windowDidResize:(NSNotification*)otification {
-  if (!shell_->has_frame())
-    shell_->ClipWebView();
+- (NSSize)windowWillResize:(NSWindow*)sender toSize:(NSSize)frameSize {
+  NSSize newSize = frameSize;
+  double aspectRatio = shell_->GetAspectRatio();
+
+  if (aspectRatio > 0.0) {
+    gfx::Size windowSize = shell_->GetSize();
+    gfx::Size contentSize = shell_->GetContentSize();
+    gfx::Size extraSize = shell_->GetAspectRatioExtraSize();
+
+    double extraWidthPlusFrame =
+        windowSize.width() - contentSize.width() + extraSize.width();
+    double extraHeightPlusFrame =
+        windowSize.height() - contentSize.height() + extraSize.height();
+
+    newSize.width =
+        roundf((frameSize.height - extraHeightPlusFrame) * aspectRatio +
+               extraWidthPlusFrame);
+
+    // If the new width is less than the frame size use it as the primary
+    // constraint. This ensures that the value returned by this method will
+    // never be larger than the users requested window size.
+    if (newSize.width <= frameSize.width) {
+      newSize.height =
+          roundf((newSize.width - extraWidthPlusFrame) / aspectRatio +
+                 extraHeightPlusFrame);
+    } else {
+      newSize.height =
+          roundf((frameSize.width - extraWidthPlusFrame) / aspectRatio +
+                 extraHeightPlusFrame);
+      newSize.width =
+          roundf((newSize.height - extraHeightPlusFrame) * aspectRatio +
+                 extraWidthPlusFrame);
+    }
+  }
+
+  return newSize;
+}
+
+- (void)windowDidResize:(NSNotification*)notification {
+  shell_->NotifyWindowResize();
+}
+
+- (void)windowDidMove:(NSNotification*)notification {
+  // TODO(zcbenz): Remove the alias after figuring out a proper
+  // way to disptach move.
+  shell_->NotifyWindowMove();
+  shell_->NotifyWindowMoved();
+}
+
+- (void)windowDidMiniaturize:(NSNotification*)notification {
+  shell_->NotifyWindowMinimize();
+}
+
+- (void)windowDidDeminiaturize:(NSNotification*)notification {
+  shell_->NotifyWindowRestore();
+}
+
+- (BOOL)windowShouldZoom:(NSWindow*)window toFrame:(NSRect)newFrame {
+  // Cocoa doen't have concept of maximize/unmaximize, so wee need to emulate
+  // them by calculating size change when zooming.
+  if (newFrame.size.width < [window frame].size.width ||
+      newFrame.size.height < [window frame].size.height)
+    shell_->NotifyWindowUnmaximize();
+  else
+    shell_->NotifyWindowMaximize();
+  return YES;
+}
+
+- (void)windowDidEnterFullScreen:(NSNotification*)notification {
+  shell_->NotifyWindowEnterFullScreen();
 }
 
 - (void)windowDidExitFullScreen:(NSNotification*)notification {
@@ -86,23 +184,20 @@ static const CGFloat kAtomWindowCornerRadius = 4.0;
     NSWindow* window = shell_->GetNativeWindow();
     [[window standardWindowButton:NSWindowFullScreenButton] setHidden:YES];
   }
+
+  shell_->NotifyWindowLeaveFullScreen();
 }
 
 - (void)windowWillClose:(NSNotification*)notification {
   shell_->NotifyWindowClosed();
-  [self autorelease];
 }
 
 - (BOOL)windowShouldClose:(id)window {
   // When user tries to close the window by clicking the close button, we do
   // not close the window immediately, instead we try to close the web page
   // fisrt, and when the web page is closed the window will also be closed.
-  shell_->CloseWebContents();
+  shell_->RequestToClosePage();
   return NO;
-}
-
-- (BOOL)acceptsFirstMouse:(NSEvent*)event {
-  return acceptsFirstMouse_;
 }
 
 @end
@@ -112,6 +207,8 @@ static const CGFloat kAtomWindowCornerRadius = 4.0;
   atom::NativeWindowMac* shell_;
   bool enable_larger_than_screen_;
 }
+@property BOOL acceptsFirstMouse;
+@property BOOL disableAutoHideCursor;
 - (void)setShell:(atom::NativeWindowMac*)shell;
 - (void)setEnableLargerThanScreen:(bool)enable;
 @end
@@ -126,34 +223,36 @@ static const CGFloat kAtomWindowCornerRadius = 4.0;
   enable_larger_than_screen_ = enable;
 }
 
-// Enable the window to be larger than screen.
 - (NSRect)constrainFrameRect:(NSRect)frameRect toScreen:(NSScreen*)screen {
+  // Resizing is disabled.
+  if (ScopedDisableResize::IsResizeDisabled())
+    return [self frame];
+
+  // Enable the window to be larger than screen.
   if (enable_larger_than_screen_)
     return frameRect;
   else
     return [super constrainFrameRect:frameRect toScreen:screen];
 }
 
-- (IBAction)reload:(id)sender {
-  shell_->GetWebContents()->GetController().ReloadIgnoringCache(false);
-}
-
-- (IBAction)showDevTools:(id)sender {
-  shell_->OpenDevTools();
-}
-
-// Returns an empty array for AXChildren attribute, this will force the
-// SpeechSynthesisServer to use its classical way of speaking the selected text:
-// by invoking the "Command+C" for current application and then speak out
-// what's in the clipboard. Otherwise the "Text to Speech" would always speak
-// out window's title.
-// This behavior is taken by both FireFox and Chrome, see also FireFox's bug on
-// more of how SpeechSynthesisServer chose which text to read:
-// https://bugzilla.mozilla.org/show_bug.cgi?id=674612
 - (id)accessibilityAttributeValue:(NSString*)attribute {
-  if ([attribute isEqualToString:@"AXChildren"])
-    return [NSArray array];
-  return [super accessibilityAttributeValue:attribute];
+  if (![attribute isEqualToString:@"AXChildren"])
+    return [super accessibilityAttributeValue:attribute];
+
+  // Filter out objects that aren't the title bar buttons. This has the effect
+  // of removing the window title, which VoiceOver already sees.
+  // * when VoiceOver is disabled, this causes Cmd+C to be used for TTS but
+  //   still leaves the buttons available in the accessibility tree.
+  // * when VoiceOver is enabled, the full accessibility tree is used.
+  // Without removing the title and with VO disabled, the TTS would always read
+  // the window title instead of using Cmd+C to get the selected text.
+  NSPredicate *predicate = [NSPredicate predicateWithFormat:
+      @"(self isKindOfClass: %@) OR (self.className == %@)",
+      [NSButtonCell class],
+      @"RenderWidgetHostViewCocoa"];
+
+  NSArray *children = [super accessibilityAttributeValue:attribute];
+  return [children filteredArrayUsingPredicate:predicate];
 }
 
 @end
@@ -189,6 +288,10 @@ static const CGFloat kAtomWindowCornerRadius = 4.0;
 
 - (void)mouseDragged:(NSEvent*)event {
   shellWindow_->HandleMouseEvent(event);
+}
+
+- (BOOL)acceptsFirstMouse:(NSEvent*)event {
+  return YES;
 }
 
 @end
@@ -228,8 +331,9 @@ static const CGFloat kAtomWindowCornerRadius = 4.0;
 
 namespace atom {
 
-NativeWindowMac::NativeWindowMac(content::WebContents* web_contents,
-                                 const mate::Dictionary& options)
+NativeWindowMac::NativeWindowMac(
+    brightray::InspectableWebContents* web_contents,
+    const mate::Dictionary& options)
     : NativeWindow(web_contents, options),
       is_kiosk_(false),
       attention_request_id_(0) {
@@ -244,23 +348,36 @@ NativeWindowMac::NativeWindowMac(content::WebContents* web_contents,
       width,
       height);
 
-  AtomNSWindow* atomWindow;
+  bool useStandardWindow = true;
+  options.Get(switches::kStandardWindow, &useStandardWindow);
 
-  atomWindow = [[AtomNSWindow alloc]
+  NSUInteger styleMask = NSTitledWindowMask | NSClosableWindowMask |
+                         NSMiniaturizableWindowMask | NSResizableWindowMask;
+  if (!useStandardWindow || transparent() || !has_frame()) {
+    styleMask |= NSTexturedBackgroundWindowMask;
+  }
+
+  window_.reset([[AtomNSWindow alloc]
       initWithContentRect:cocoa_bounds
-                styleMask:NSTitledWindowMask | NSClosableWindowMask |
-                          NSMiniaturizableWindowMask | NSResizableWindowMask |
-                          NSTexturedBackgroundWindowMask
+                styleMask:styleMask
                   backing:NSBackingStoreBuffered
-                    defer:YES];
+                    defer:YES]);
+  [window_ setShell:this];
+  [window_ setEnableLargerThanScreen:enable_larger_than_screen()];
 
-  [atomWindow setShell:this];
-  [atomWindow setEnableLargerThanScreen:enable_larger_than_screen_];
-  window_.reset(atomWindow);
+  window_delegate_.reset([[AtomNSWindowDelegate alloc] initWithShell:this]);
+  [window_ setDelegate:window_delegate_];
 
-  AtomNSWindowDelegate* delegate =
-      [[AtomNSWindowDelegate alloc] initWithShell:this];
-  [window_ setDelegate:delegate];
+  if (transparent()) {
+    // Make window has transparent background.
+    [window_ setOpaque:NO];
+    [window_ setHasShadow:NO];
+    [window_ setBackgroundColor:[NSColor clearColor]];
+  }
+
+  // Remove non-transparent corners, see http://git.io/vfonD.
+  if (!has_frame())
+    [window_ setOpaque:NO];
 
   // We will manage window's lifetime ourselves.
   [window_ setReleasedWhenClosed:NO];
@@ -268,13 +385,18 @@ NativeWindowMac::NativeWindowMac(content::WebContents* web_contents,
   // On OS X the initial window size doesn't include window frame.
   bool use_content_size = false;
   options.Get(switches::kUseContentSize, &use_content_size);
-  if (has_frame_ && !use_content_size)
+  if (!has_frame() || !use_content_size)
     SetSize(gfx::Size(width, height));
 
   // Enable the NSView to accept first mouse event.
   bool acceptsFirstMouse = false;
   options.Get(switches::kAcceptFirstMouse, &acceptsFirstMouse);
-  [delegate setAcceptsFirstMouse:acceptsFirstMouse];
+  [window_ setAcceptsFirstMouse:acceptsFirstMouse];
+
+  // Disable auto-hiding cursor.
+  bool disableAutoHideCursor = false;
+  options.Get(switches::kDisableAutoHideCursor, &disableAutoHideCursor);
+  [window_ setDisableAutoHideCursor:disableAutoHideCursor];
 
   // Disable fullscreen button when 'fullscreen' is specified to false.
   bool fullscreen;
@@ -292,9 +414,7 @@ NativeWindowMac::NativeWindowMac(content::WebContents* web_contents,
 }
 
 NativeWindowMac::~NativeWindowMac() {
-  // Force InspectableWebContents to be destroyed before we destroy window,
-  // because it may still be observing the window at this time.
-  DestroyWebContents();
+  Observe(nullptr);
 }
 
 void NativeWindowMac::Close() {
@@ -303,18 +423,6 @@ void NativeWindowMac::Close() {
 
 void NativeWindowMac::CloseImmediately() {
   [window_ close];
-}
-
-void NativeWindowMac::Move(const gfx::Rect& pos) {
-  NSRect cocoa_bounds = NSMakeRect(pos.x(), 0,
-                                   pos.width(),
-                                   pos.height());
-  // Flip coordinates based on the primary screen.
-  NSScreen* screen = [[NSScreen screens] objectAtIndex:0];
-  cocoa_bounds.origin.y =
-      NSHeight([screen frame]) - pos.height() - pos.y();
-
-  [window_ setFrame:cocoa_bounds display:YES];
 }
 
 void NativeWindowMac::Focus(bool focus) {
@@ -334,6 +442,14 @@ bool NativeWindowMac::IsFocused() {
 }
 
 void NativeWindowMac::Show() {
+  // This method is supposed to put focus on window, however if the app does not
+  // have focus then "makeKeyAndOrderFront" will only show the window.
+  [NSApp activateIgnoringOtherApps:YES];
+
+  [window_ makeKeyAndOrderFront:nil];
+}
+
+void NativeWindowMac::ShowInactive() {
   [window_ orderFrontRegardless];
 }
 
@@ -369,7 +485,7 @@ bool NativeWindowMac::IsMinimized() {
   return [window_ isMiniaturized];
 }
 
-void NativeWindowMac::SetFullscreen(bool fullscreen) {
+void NativeWindowMac::SetFullScreen(bool fullscreen) {
   if (fullscreen == IsFullscreen())
     return;
 
@@ -381,25 +497,36 @@ void NativeWindowMac::SetFullscreen(bool fullscreen) {
   [window_ toggleFullScreen:nil];
 }
 
-bool NativeWindowMac::IsFullscreen() {
+bool NativeWindowMac::IsFullscreen() const {
   return [window_ styleMask] & NSFullScreenWindowMask;
 }
 
-void NativeWindowMac::SetSize(const gfx::Size& size) {
-  NSRect frame = [window_ frame];
-  frame.origin.y -= size.height() - frame.size.height;
-  frame.size.width = size.width();
-  frame.size.height = size.height();
+void NativeWindowMac::SetBounds(const gfx::Rect& bounds) {
+  NSRect cocoa_bounds = NSMakeRect(bounds.x(), 0,
+                                   bounds.width(),
+                                   bounds.height());
+  // Flip coordinates based on the primary screen.
+  NSScreen* screen = [[NSScreen screens] objectAtIndex:0];
+  cocoa_bounds.origin.y =
+      NSHeight([screen frame]) - bounds.height() - bounds.y();
 
-  [window_ setFrame:frame display:YES];
+  [window_ setFrame:cocoa_bounds display:YES];
 }
 
-gfx::Size NativeWindowMac::GetSize() {
+gfx::Rect NativeWindowMac::GetBounds() {
   NSRect frame = [window_ frame];
-  return gfx::Size(frame.size.width, frame.size.height);
+  gfx::Rect bounds(frame.origin.x, 0, NSWidth(frame), NSHeight(frame));
+  NSScreen* screen = [[NSScreen screens] objectAtIndex:0];
+  bounds.set_y(NSHeight([screen frame]) - NSMaxY(frame));
+  return bounds;
 }
 
 void NativeWindowMac::SetContentSize(const gfx::Size& size) {
+  if (!has_frame()) {
+    SetSize(size);
+    return;
+  }
+
   NSRect frame_nsrect = [window_ frame];
   NSSize frame = frame_nsrect.size;
   NSSize content = [window_ contentRectForFrameRect:frame_nsrect].size;
@@ -413,6 +540,9 @@ void NativeWindowMac::SetContentSize(const gfx::Size& size) {
 }
 
 gfx::Size NativeWindowMac::GetContentSize() {
+  if (!has_frame())
+    return GetSize();
+
   NSRect bounds = [[window_ contentView] bounds];
   return gfx::Size(bounds.size.width, bounds.size.height);
 }
@@ -444,12 +574,15 @@ gfx::Size NativeWindowMac::GetMaximumSize() {
 }
 
 void NativeWindowMac::SetResizable(bool resizable) {
+  // Change styleMask for frameless causes the window to change size, so we have
+  // to explicitly disables that.
+  ScopedDisableResize disable_resize;
   if (resizable) {
     [[window_ standardWindowButton:NSWindowZoomButton] setEnabled:YES];
     [window_ setStyleMask:[window_ styleMask] | NSResizableWindowMask];
   } else {
     [[window_ standardWindowButton:NSWindowZoomButton] setEnabled:NO];
-    [window_ setStyleMask:[window_ styleMask] ^ NSResizableWindowMask];
+    [window_ setStyleMask:[window_ styleMask] & (~NSResizableWindowMask)];
   }
 }
 
@@ -469,19 +602,11 @@ void NativeWindowMac::Center() {
   [window_ center];
 }
 
-void NativeWindowMac::SetPosition(const gfx::Point& position) {
-  Move(gfx::Rect(position, GetSize()));
-}
-
-gfx::Point NativeWindowMac::GetPosition() {
-  NSRect frame = [window_ frame];
-  NSScreen* screen = [[NSScreen screens] objectAtIndex:0];
-
-  return gfx::Point(frame.origin.x,
-      NSHeight([screen frame]) - frame.origin.y - frame.size.height);
-}
-
 void NativeWindowMac::SetTitle(const std::string& title) {
+  // We don't want the title to show in transparent or frameless window.
+  if (transparent() || !has_frame())
+    return;
+
   [window_ setTitle:base::SysUTF8ToNSString(title)];
 }
 
@@ -514,10 +639,10 @@ void NativeWindowMac::SetKiosk(bool kiosk) {
         NSApplicationPresentationDisableHideApplication;
     [NSApp setPresentationOptions:options];
     is_kiosk_ = true;
-    SetFullscreen(true);
+    SetFullScreen(true);
   } else if (!kiosk && is_kiosk_) {
     is_kiosk_ = false;
-    SetFullscreen(false);
+    SetFullScreen(false);
     [NSApp setPresentationOptions:kiosk_options_];
   }
 }
@@ -586,20 +711,51 @@ void NativeWindowMac::SetProgressBar(double progress) {
   [dock_tile display];
 }
 
+void NativeWindowMac::SetOverlayIcon(const gfx::Image& overlay,
+                                     const std::string& description) {
+}
+
+void NativeWindowMac::ShowDefinitionForSelection() {
+  if (!web_contents())
+    return;
+  auto rwhv = web_contents()->GetRenderWidgetHostView();
+  if (!rwhv)
+    return;
+  rwhv->ShowDefinitionForSelection();
+}
+
+void NativeWindowMac::SetVisibleOnAllWorkspaces(bool visible) {
+  NSUInteger collectionBehavior = [window_ collectionBehavior];
+  if (visible) {
+    collectionBehavior |= NSWindowCollectionBehaviorCanJoinAllSpaces;
+  } else {
+    collectionBehavior &= ~NSWindowCollectionBehaviorCanJoinAllSpaces;
+  }
+  [window_ setCollectionBehavior:collectionBehavior];
+}
+
+bool NativeWindowMac::IsVisibleOnAllWorkspaces() {
+  NSUInteger collectionBehavior = [window_ collectionBehavior];
+  return collectionBehavior & NSWindowCollectionBehaviorCanJoinAllSpaces;
+}
+
 bool NativeWindowMac::IsWithinDraggableRegion(NSPoint point) const {
-  if (!draggable_region_)
+  if (!draggable_region())
     return false;
-  NSView* webView = GetWebContents()->GetNativeView();
+  if (!web_contents())
+    return false;
+  NSView* webView = web_contents()->GetNativeView();
   NSInteger webViewHeight = NSHeight([webView bounds]);
   // |draggable_region_| is stored in local platform-indepdent coordiate system
   // while |point| is in local Cocoa coordinate system. Do the conversion
   // to match these two.
-  return draggable_region_->contains(point.x, webViewHeight - point.y);
+  return draggable_region()->contains(point.x, webViewHeight - point.y);
 }
 
 void NativeWindowMac::HandleMouseEvent(NSEvent* event) {
-  NSPoint current_mouse_location =
-      [window_ convertBaseToScreen:[event locationInWindow]];
+  NSPoint eventLoc = [event locationInWindow];
+  NSRect mouseRect = [window_ convertRectToScreen:NSMakeRect(eventLoc.x, eventLoc.y, 0, 0)];
+  NSPoint current_mouse_location = mouseRect.origin;
 
   if ([event type] == NSLeftMouseDown) {
     NSPoint frame_origin = [window_ frame].origin;
@@ -613,16 +769,6 @@ void NativeWindowMac::HandleMouseEvent(NSEvent* event) {
   }
 }
 
-void NativeWindowMac::UpdateDraggableRegions(
-    const std::vector<DraggableRegion>& regions) {
-  // Draggable region is not supported for non-frameless window.
-  if (has_frame_)
-    return;
-
-  UpdateDraggableRegionsForCustomDrag(regions);
-  InstallDraggableRegionViews();
-}
-
 void NativeWindowMac::HandleKeyboardEvent(
     content::WebContents*,
     const content::NativeWebKeyboardEvent& event) {
@@ -630,7 +776,7 @@ void NativeWindowMac::HandleKeyboardEvent(
       event.type == content::NativeWebKeyboardEvent::Char)
     return;
 
-  if (event.os_event.window == window_) {
+  if (event.os_event.window == window_.get()) {
     EventProcessingWindow* event_window =
         static_cast<EventProcessingWindow*>(window_);
     DCHECK([event_window isKindOfClass:[EventProcessingWindow class]]);
@@ -648,25 +794,37 @@ void NativeWindowMac::HandleKeyboardEvent(
 }
 
 void NativeWindowMac::InstallView() {
+  // Make sure the bottom corner is rounded: http://crbug.com/396264.
+  [[window_ contentView] setWantsLayer:YES];
+
   NSView* view = inspectable_web_contents()->GetView()->GetNativeView();
-  if (has_frame_) {
-    // Add layer with white background for the contents view.
-    base::scoped_nsobject<CALayer> layer([[CALayer alloc] init]);
-    [layer setBackgroundColor:CGColorGetConstantColor(kCGColorWhite)];
-    [view setLayer:layer];
+  if (has_frame()) {
     [view setFrame:[[window_ contentView] bounds]];
     [[window_ contentView] addSubview:view];
   } else {
-    NSView* frameView = [[window_ contentView] superview];
-    [view setFrame:[frameView bounds]];
-    [frameView addSubview:view];
+    // In OSX 10.10, adding subviews to the root view for the NSView hierarchy
+    // produces warnings. To eliminate the warnings, we resize the contentView
+    // to fill the window, and add subviews to that.
+    // http://crbug.com/380412
+    content_view_.reset([[FullSizeContentView alloc] init]);
+    [content_view_
+        setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    [content_view_ setFrame:[[[window_ contentView] superview] bounds]];
+    [window_ setContentView:content_view_];
 
-    ClipWebView();
+    [view setFrame:[content_view_ bounds]];
+    [content_view_ addSubview:view];
+
+    InstallDraggableRegionView();
 
     [[window_ standardWindowButton:NSWindowZoomButton] setHidden:YES];
     [[window_ standardWindowButton:NSWindowMiniaturizeButton] setHidden:YES];
     [[window_ standardWindowButton:NSWindowCloseButton] setHidden:YES];
-    [[window_ standardWindowButton:NSWindowFullScreenButton] setHidden:YES];
+
+    // Some third-party OS X utilities check the zoom button's enabled state to
+    // determine whether to show custom UI on hover, so we disable it here to
+    // prevent them from doing so in a frameless app window.
+    [[window_ standardWindowButton:NSWindowZoomButton] setEnabled:NO];
   }
 }
 
@@ -675,77 +833,21 @@ void NativeWindowMac::UninstallView() {
   [view removeFromSuperview];
 }
 
-void NativeWindowMac::ClipWebView() {
-  NSView* view = GetWebContents()->GetNativeView();
-  view.layer.masksToBounds = YES;
-  view.layer.cornerRadius = kAtomWindowCornerRadius;
-}
-
-void NativeWindowMac::InstallDraggableRegionViews() {
-  DCHECK(!has_frame_);
-
-  // All ControlRegionViews should be added as children of the WebContentsView,
-  // because WebContentsView will be removed and re-added when entering and
-  // leaving fullscreen mode.
-  NSView* webView = GetWebContents()->GetNativeView();
-  NSInteger webViewHeight = NSHeight([webView bounds]);
-
-  // Remove all ControlRegionViews that are added last time.
-  // Note that [webView subviews] returns the view's mutable internal array and
-  // it should be copied to avoid mutating the original array while enumerating
-  // it.
-  base::scoped_nsobject<NSArray> subviews([[webView subviews] copy]);
-  for (NSView* subview in subviews.get())
-    if ([subview isKindOfClass:[ControlRegionView class]])
-      [subview removeFromSuperview];
-
-  // Create and add ControlRegionView for each region that needs to be excluded
-  // from the dragging.
-  for (std::vector<gfx::Rect>::const_iterator iter =
-           system_drag_exclude_areas_.begin();
-       iter != system_drag_exclude_areas_.end();
-       ++iter) {
-    base::scoped_nsobject<NSView> controlRegion(
-        [[ControlRegionView alloc] initWithShellWindow:this]);
-    [controlRegion setFrame:NSMakeRect(iter->x(),
-                                       webViewHeight - iter->bottom(),
-                                       iter->width(),
-                                       iter->height())];
-    [webView addSubview:controlRegion];
-  }
-}
-
-void NativeWindowMac::UpdateDraggableRegionsForCustomDrag(
-    const std::vector<DraggableRegion>& regions) {
-  // We still need one ControlRegionView to cover the whole window such that
-  // mouse events could be captured.
-  NSView* web_view = GetWebContents()->GetNativeView();
-  gfx::Rect window_bounds(
-      0, 0, NSWidth([web_view bounds]), NSHeight([web_view bounds]));
-  system_drag_exclude_areas_.clear();
-  system_drag_exclude_areas_.push_back(window_bounds);
-
-  // Aggregate the draggable areas and non-draggable areas such that hit test
-  // could be performed easily.
-  SkRegion* draggable_region = new SkRegion;
-  for (std::vector<DraggableRegion>::const_iterator iter = regions.begin();
-       iter != regions.end();
-       ++iter) {
-    const DraggableRegion& region = *iter;
-    draggable_region->op(
-        region.bounds.x(),
-        region.bounds.y(),
-        region.bounds.right(),
-        region.bounds.bottom(),
-        region.draggable ? SkRegion::kUnion_Op : SkRegion::kDifference_Op);
-  }
-  draggable_region_.reset(draggable_region);
+void NativeWindowMac::InstallDraggableRegionView() {
+  NSView* webView = web_contents()->GetNativeView();
+  base::scoped_nsobject<NSView> controlRegion(
+      [[ControlRegionView alloc] initWithShellWindow:this]);
+  [controlRegion setFrame:NSMakeRect(0, 0,
+                                     NSWidth([webView bounds]),
+                                     NSHeight([webView bounds]))];
+  [webView addSubview:controlRegion];
 }
 
 // static
-NativeWindow* NativeWindow::Create(content::WebContents* web_contents,
-                                   const mate::Dictionary& options) {
-  return new NativeWindowMac(web_contents, options);
+NativeWindow* NativeWindow::Create(
+    brightray::InspectableWebContents* inspectable_web_contents,
+    const mate::Dictionary& options) {
+  return new NativeWindowMac(inspectable_web_contents, options);
 }
 
 }  // namespace atom

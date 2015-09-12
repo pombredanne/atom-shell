@@ -17,6 +17,14 @@ describe 'node feature', ->
           done()
         child.send 'message'
 
+      it 'preserves args', (done) ->
+        args = ['--expose_gc', '-test', '1']
+        child = child_process.fork path.join(fixtures, 'module', 'process_args.js'), args
+        child.on 'message', (msg) ->
+          assert.deepEqual args, msg.slice(2)
+          done()
+        child.send 'message'
+
       it 'works in forked process', (done) ->
         child = child_process.fork path.join(fixtures, 'module', 'fork_ping.js')
         child.on 'message', (msg) ->
@@ -41,15 +49,17 @@ describe 'node feature', ->
           done()
         child.send 'message'
 
+      it 'has String::localeCompare working in script', (done) ->
+        child = child_process.fork path.join(fixtures, 'module', 'locale-compare.js')
+        child.on 'message', (msg) ->
+          assert.deepEqual msg, [0, -1, 1]
+          done()
+        child.send 'message'
+
   describe 'contexts', ->
     describe 'setTimeout in fs callback', ->
       it 'does not crash', (done) ->
         fs.readFile __filename, ->
-          setTimeout done, 0
-
-    describe 'setTimeout in pure uv callback', ->
-      it 'does not crash', (done) ->
-        process.scheduleCallback ->
           setTimeout done, 0
 
     describe 'throw error in node context', ->
@@ -96,14 +106,38 @@ describe 'node feature', ->
             setImmediate done
 
   describe 'net.connect', ->
-    it 'emit error when connect to a socket path without listeners', (done) ->
-      return done() if process.platform is 'win32'
+    return unless process.platform is 'darwin'
 
+    it 'emit error when connect to a socket path without listeners', (done) ->
       socketPath = path.join os.tmpdir(), 'atom-shell-test.sock'
       script = path.join(fixtures, 'module', 'create_socket.js')
       child = child_process.fork script, [socketPath]
-      child.on 'exit', ->
+      child.on 'exit', (code) ->
+        assert.equal code, 0
         client = require('net').connect socketPath
         client.on 'error', (error) ->
           assert.equal error.code, 'ECONNREFUSED'
           done()
+
+  describe 'Buffer', ->
+    it 'can be created from WebKit external string', ->
+      p = document.createElement 'p'
+      p.innerText = '闲云潭影日悠悠，物换星移几度秋'
+      b = new Buffer(p.innerText)
+      assert.equal b.toString(), '闲云潭影日悠悠，物换星移几度秋'
+      assert.equal Buffer.byteLength(p.innerText), 45
+
+    it 'correctly parses external one-byte UTF8 string', ->
+      p = document.createElement 'p'
+      p.innerText = 'Jøhänñéß'
+      b = new Buffer(p.innerText)
+      assert.equal b.toString(), 'Jøhänñéß'
+      assert.equal Buffer.byteLength(p.innerText), 13
+
+  describe 'process.stdout', ->
+    it 'should not throw exception', ->
+      process.stdout
+
+    # Not reliable on some machines
+    xit 'should have isTTY defined', ->
+      assert.equal typeof(process.stdout.isTTY), 'boolean'

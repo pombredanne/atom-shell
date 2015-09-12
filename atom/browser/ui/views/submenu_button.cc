@@ -1,4 +1,4 @@
-// Copyright (c) 2014 GitHub, Inc. All rights reserved.
+// Copyright (c) 2014 GitHub, Inc.
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
@@ -37,7 +37,7 @@ SubmenuButton::SubmenuButton(views::ButtonListener* listener,
       underline_color_(SK_ColorBLACK) {
 #if defined(OS_LINUX)
   // Dont' use native style border.
-  SetBorder(CreateDefaultBorder().PassAs<views::Border>());
+  SetBorder(CreateDefaultBorder().Pass());
 #endif
 
   if (GetUnderlinePosition(title, &accelerator_, &underline_start_,
