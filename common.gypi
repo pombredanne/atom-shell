@@ -4,6 +4,8 @@
     'vendor/brightray/brightray.gypi',
   ],
   'variables': {
+    # Tell crashpad to build as external project.
+    'crashpad_dependencies': 'external',
     # Required by breakpad.
     'os_bsd': 0,
     'chromeos': 0,
@@ -13,7 +15,7 @@
     'openssl_fips': '',
     'openssl_no_asm': 1,
     'node_release_urlbase': 'https://atom.io/download/atom-shell',
-    'node_byteorder': '<!(python -c "import sys; print sys.byteorder")',
+    'node_byteorder': '<!(node <(DEPTH)/tools/get-endianness.js)',
     'node_target_type': 'shared_library',
     'node_install_npm': 'false',
     'node_prefix': '',
@@ -41,6 +43,7 @@
     'target_conditions': [
       ['_target_name in ["libuv", "http_parser", "openssl", "cares", "node", "zlib"]', {
         'msvs_disabled_warnings': [
+          4003,  # not enough actual parameters for macro 'V'
           4013,  # 'free' undefined; assuming extern returning int
           4018,  # signed/unsigned mismatch
           4054,  #
@@ -227,6 +230,7 @@
     'msvs_cygwin_shell': 0, # Strangely setting it to 1 would make building under cygwin fail.
     'msvs_disabled_warnings': [
       4005,  # (node.h) macro redefinition
+      4091,  # (node_extern.h) '__declspec(dllimport)' : ignored on left of 'node::Environment' when no variable is declared
       4189,  # local variable is initialized but not referenced
       4201,  # (uv.h) nameless struct/union
       4267,  # conversion from 'size_t' to 'int', possible loss of data

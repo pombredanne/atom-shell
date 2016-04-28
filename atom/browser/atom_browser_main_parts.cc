@@ -21,15 +21,22 @@
 
 #if defined(USE_X11)
 #include "chrome/browser/ui/libgtk2ui/gtk2_util.h"
+#include "ui/events/devices/x11/touch_factory_x11.h"
 #endif
 
 namespace atom {
+
+template<typename T>
+void Erase(T* container, typename T::iterator iter) {
+  container->erase(iter);
+}
 
 // static
 AtomBrowserMainParts* AtomBrowserMainParts::self_ = NULL;
 
 AtomBrowserMainParts::AtomBrowserMainParts()
     : fake_browser_process_(new BrowserProcess),
+      exit_code_(nullptr),
       browser_(new Browser),
       node_bindings_(NodeBindings::Create(true)),
       atom_bindings_(new AtomBindings),
@@ -39,6 +46,14 @@ AtomBrowserMainParts::AtomBrowserMainParts()
 }
 
 AtomBrowserMainParts::~AtomBrowserMainParts() {
+  // Leak the JavascriptEnvironment on exit.
+  // This is to work around the bug that V8 would be waiting for background
+  // tasks to finish on exit, while somehow it waits forever in Electron, more
+  // about this can be found at https://github.com/electron/electron/issues/4767.
+  // On the other handle there is actually no need to gracefully shutdown V8
+  // on exit in the main process, we already ensured all necessary resources get
+  // cleaned up, and it would make quitting faster.
+  ignore_result(js_env_.release());
 }
 
 // static
@@ -47,29 +62,43 @@ AtomBrowserMainParts* AtomBrowserMainParts::Get() {
   return self_;
 }
 
-void AtomBrowserMainParts::RegisterDestructionCallback(
+bool AtomBrowserMainParts::SetExitCode(int code) {
+  if (!exit_code_)
+    return false;
+
+  *exit_code_ = code;
+  return true;
+}
+
+int AtomBrowserMainParts::GetExitCode() {
+  return exit_code_ != nullptr ? *exit_code_ : 0;
+}
+
+base::Closure AtomBrowserMainParts::RegisterDestructionCallback(
     const base::Closure& callback) {
-  destruction_callbacks_.push_back(callback);
+  auto iter = destructors_.insert(destructors_.end(), callback);
+  return base::Bind(&Erase<std::list<base::Closure>>, &destructors_, iter);
+}
+
+void AtomBrowserMainParts::PreEarlyInitialization() {
+  brightray::BrowserMainParts::PreEarlyInitialization();
+#if defined(OS_POSIX)
+  HandleSIGCHLD();
+#endif
 }
 
 void AtomBrowserMainParts::PostEarlyInitialization() {
   brightray::BrowserMainParts::PostEarlyInitialization();
 
-#if defined(USE_X11)
-  SetDPIFromGSettings();
-#endif
+  // Temporary set the bridge_task_runner_ as current thread's task runner,
+  // so we can fool gin::PerIsolateData to use it as its task runner, instead
+  // of getting current message loop's task runner, which is null for now.
+  bridge_task_runner_ = new BridgeTaskRunner;
+  base::ThreadTaskRunnerHandle handle(bridge_task_runner_);
 
-  {
-    // Temporary set the bridge_task_runner_ as current thread's task runner,
-    // so we can fool gin::PerIsolateData to use it as its task runner, instead
-    // of getting current message loop's task runner, which is null for now.
-    bridge_task_runner_ = new BridgeTaskRunner;
-    base::ThreadTaskRunnerHandle handle(bridge_task_runner_);
-
-    // The ProxyResolverV8 has setup a complete V8 environment, in order to
-    // avoid conflicts we only initialize our V8 environment after that.
-    js_env_.reset(new JavascriptEnvironment);
-  }
+  // The ProxyResolverV8 has setup a complete V8 environment, in order to
+  // avoid conflicts we only initialize our V8 environment after that.
+  js_env_.reset(new JavascriptEnvironment);
 
   node_bindings_->Initialize();
 
@@ -77,17 +106,21 @@ void AtomBrowserMainParts::PostEarlyInitialization() {
   node_debugger_.reset(new NodeDebugger(js_env_->isolate()));
 
   // Create the global environment.
-  global_env = node_bindings_->CreateEnvironment(js_env_->context());
+  node::Environment* env =
+      node_bindings_->CreateEnvironment(js_env_->context());
 
   // Make sure node can get correct environment when debugging.
   if (node_debugger_->IsRunning())
-    global_env->AssignToContext(v8::Debug::GetDebugContext());
+    env->AssignToContext(v8::Debug::GetDebugContext());
 
   // Add atom-shell extended APIs.
-  atom_bindings_->BindTo(js_env_->isolate(), global_env->process_object());
+  atom_bindings_->BindTo(js_env_->isolate(), env->process_object());
 
   // Load everything.
-  node_bindings_->LoadEnvironment(global_env);
+  node_bindings_->LoadEnvironment(env);
+
+  // Wrap the uv loop with global env.
+  node_bindings_->set_uv_env(env);
 }
 
 void AtomBrowserMainParts::PreMainMessageLoopRun() {
@@ -96,14 +129,19 @@ void AtomBrowserMainParts::PreMainMessageLoopRun() {
   node_bindings_->PrepareMessageLoop();
   node_bindings_->RunMessageLoop();
 
+#if defined(USE_X11)
+  ui::TouchFactory::SetTouchDeviceListFromCommandLine();
+#endif
+
   // Start idle gc.
   gc_timer_.Start(
       FROM_HERE, base::TimeDelta::FromMinutes(1),
-      base::Bind(base::IgnoreResult(&v8::Isolate::IdleNotification),
-                 base::Unretained(js_env_->isolate()),
-                 1000));
+      base::Bind(&v8::Isolate::LowMemoryNotification,
+                 base::Unretained(js_env_->isolate())));
 
   brightray::BrowserMainParts::PreMainMessageLoopRun();
+  bridge_task_runner_->MessageLoopIsReady();
+  bridge_task_runner_ = nullptr;
 
 #if defined(USE_X11)
   libgtk2ui::GtkInitFromCommandLine(*base::CommandLine::ForCurrentProcess());
@@ -116,14 +154,35 @@ void AtomBrowserMainParts::PreMainMessageLoopRun() {
 #endif
 }
 
+bool AtomBrowserMainParts::MainMessageLoopRun(int* result_code) {
+  exit_code_ = result_code;
+  return brightray::BrowserMainParts::MainMessageLoopRun(result_code);
+}
+
+void AtomBrowserMainParts::PostMainMessageLoopStart() {
+  brightray::BrowserMainParts::PostMainMessageLoopStart();
+#if defined(OS_POSIX)
+  HandleShutdownSignals();
+#endif
+}
+
 void AtomBrowserMainParts::PostMainMessageLoopRun() {
   brightray::BrowserMainParts::PostMainMessageLoopRun();
+
+#if defined(OS_MACOSX)
+  FreeAppDelegate();
+#endif
 
   // Make sure destruction callbacks are called before message loop is
   // destroyed, otherwise some objects that need to be deleted on IO thread
   // won't be freed.
-  for (const auto& callback : destruction_callbacks_)
+  // We don't use ranged for loop because iterators are getting invalided when
+  // the callback runs.
+  for (auto iter = destructors_.begin(); iter != destructors_.end();) {
+    base::Closure& callback = *iter;
+    ++iter;
     callback.Run();
+  }
 }
 
 }  // namespace atom

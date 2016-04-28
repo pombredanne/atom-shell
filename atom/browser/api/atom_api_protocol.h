@@ -30,7 +30,7 @@ class AtomURLRequestJobFactory;
 
 namespace api {
 
-class Protocol : public mate::Wrappable {
+class Protocol : public mate::Wrappable<Protocol> {
  public:
   using Handler =
       base::Callback<void(const net::URLRequest*, v8::Local<v8::Value>)>;
@@ -40,12 +40,11 @@ class Protocol : public mate::Wrappable {
   static mate::Handle<Protocol> Create(
       v8::Isolate* isolate, AtomBrowserContext* browser_context);
 
- protected:
-  explicit Protocol(AtomBrowserContext* browser_context);
+  static void BuildPrototype(v8::Isolate* isolate,
+                             v8::Local<v8::ObjectTemplate> prototype);
 
-  // mate::Wrappable implementations:
-  virtual mate::ObjectTemplateBuilder GetObjectTemplateBuilder(
-      v8::Isolate* isolate);
+ protected:
+  Protocol(v8::Isolate* isolate, AtomBrowserContext* browser_context);
 
  private:
   // Possible errors.
@@ -92,6 +91,9 @@ class Protocol : public mate::Wrappable {
   // Register schemes to standard scheme list.
   void RegisterStandardSchemes(const std::vector<std::string>& schemes);
 
+  // Register schemes that can handle service worker.
+  void RegisterServiceWorkerSchemes(const std::vector<std::string>& schemes);
+
   // Register the protocol with certain request job.
   template<typename RequestJob>
   void RegisterProtocol(const std::string& scheme,
@@ -114,7 +116,7 @@ class Protocol : public mate::Wrappable {
     scoped_ptr<CustomProtocolHandler<RequestJob>> protocol_handler(
         new CustomProtocolHandler<RequestJob>(
             isolate(), request_context_getter_, handler));
-    if (job_factory_->SetProtocolHandler(scheme, protocol_handler.Pass()))
+    if (job_factory_->SetProtocolHandler(scheme, std::move(protocol_handler)))
       return PROTOCOL_OK;
     else
       return PROTOCOL_FAIL;
@@ -158,7 +160,7 @@ class Protocol : public mate::Wrappable {
             isolate(), request_context_getter_, handler));
     original_protocols_.set(
         scheme,
-        job_factory_->ReplaceProtocol(scheme, protocol_handler.Pass()));
+        job_factory_->ReplaceProtocol(scheme, std::move(protocol_handler)));
     return PROTOCOL_OK;
   }
 

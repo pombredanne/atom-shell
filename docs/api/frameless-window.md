@@ -1,6 +1,11 @@
 # Frameless Window
 
-A frameless window is a window that has no [chrome](https://developer.mozilla.org/en-US/docs/Glossary/Chrome), the parts of the window, like toolbars, that are not a part of the webp page. These are options on the [`BrowserWindow`](browser-window.md) class.
+> Open a window without toolbars, borders, or other graphical "chrome".
+
+A frameless window is a window that has no
+[chrome](https://developer.mozilla.org/en-US/docs/Glossary/Chrome), the parts of
+the window, like toolbars, that are not a part of the web page. These are
+options on the [`BrowserWindow`](browser-window.md) class.
 
 ## Create a frameless window
 
@@ -9,8 +14,21 @@ To create a frameless window, you need to set `frame` to `false` in
 
 
 ```javascript
-var BrowserWindow = require('browser-window');
+const BrowserWindow = require('electron').BrowserWindow;
 var win = new BrowserWindow({ width: 800, height: 600, frame: false });
+```
+
+### Alternatives on OS X
+
+On Mac OS X 10.10 Yosemite and newer, there's an alternative way to specify
+a chromeless window. Instead of setting `frame` to `false` which disables
+both the titlebar and window controls, you may want to have the title bar
+hidden and your content extend to the full window size, yet still preserve
+the window controls ("traffic lights") for standard window actions.
+You can do so by specifying the new `titleBarStyle` option:
+
+```javascript
+var win = new BrowserWindow({ 'titleBarStyle': 'hidden' });
 ```
 
 ## Transparent window
@@ -25,8 +43,8 @@ var win = new BrowserWindow({ transparent: true, frame: false });
 ### Limitations
 
 * You can not click through the transparent area. We are going to introduce an
-  API to set window shape to solve this, but currently blocked at an
-  [upstream bug](https://code.google.com/p/chromium/issues/detail?id=387234).
+  API to set window shape to solve this, see
+  [our issue](https://github.com/electron/electron/issues/1335) for details.
 * Transparent windows are not resizable. Setting `resizable` to `true` may make
   a transparent window stop working on some platforms.
 * The `blur` filter only applies to the web page, so there is no way to apply

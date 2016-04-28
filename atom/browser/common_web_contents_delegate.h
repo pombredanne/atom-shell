@@ -9,9 +9,10 @@
 #include <string>
 #include <vector>
 
-#include "brightray/browser/default_web_contents_delegate.h"
 #include "brightray/browser/inspectable_web_contents_impl.h"
 #include "brightray/browser/inspectable_web_contents_delegate.h"
+#include "brightray/browser/inspectable_web_contents_view_delegate.h"
+#include "content/public/browser/web_contents_delegate.h"
 
 namespace atom {
 
@@ -20,8 +21,9 @@ class NativeWindow;
 class WebDialogHelper;
 
 class CommonWebContentsDelegate
-    : public brightray::DefaultWebContentsDelegate,
-      public brightray::InspectableWebContentsDelegate {
+    : public content::WebContentsDelegate,
+      public brightray::InspectableWebContentsDelegate,
+      public brightray::InspectableWebContentsViewDelegate {
  public:
   CommonWebContentsDelegate();
   virtual ~CommonWebContentsDelegate();
@@ -32,6 +34,8 @@ class CommonWebContentsDelegate
 
   // Set the window as owner window.
   void SetOwnerWindow(NativeWindow* owner_window);
+  void SetOwnerWindow(content::WebContents* web_contents,
+                      NativeWindow* owner_window);
 
   // Destroy the managed InspectableWebContents object.
   void DestroyWebContents();
@@ -55,9 +59,6 @@ class CommonWebContentsDelegate
   content::WebContents* OpenURLFromTab(
       content::WebContents* source,
       const content::OpenURLParams& params) override;
-  void RequestToLockMouse(content::WebContents* web_contents,
-                          bool user_gesture,
-                          bool last_unlocked_by_target) override;
   bool CanOverscrollContent() const override;
   content::JavaScriptDialogManager* GetJavaScriptDialogManager(
       content::WebContents* source) override;
@@ -75,6 +76,9 @@ class CommonWebContentsDelegate
   void ExitFullscreenModeForTab(content::WebContents* source) override;
   bool IsFullscreenForTabOrPending(
       const content::WebContents* source) const override;
+  content::SecurityStyle GetSecurityStyle(
+      content::WebContents* web_contents,
+      content::SecurityStyleExplanations* explanations) override;
 
   // brightray::InspectableWebContentsDelegate:
   void DevToolsSaveToFile(const std::string& url,
@@ -82,9 +86,19 @@ class CommonWebContentsDelegate
                           bool save_as) override;
   void DevToolsAppendToFile(const std::string& url,
                             const std::string& content) override;
+  void DevToolsRequestFileSystems() override;
   void DevToolsAddFileSystem(const base::FilePath& path) override;
   void DevToolsRemoveFileSystem(
       const base::FilePath& file_system_path) override;
+
+  // brightray::InspectableWebContentsViewDelegate:
+#if defined(TOOLKIT_VIEWS)
+  gfx::ImageSkia GetDevToolsWindowIcon() override;
+#endif
+#if defined(USE_X11)
+  void GetDevToolsWindowWMClass(
+      std::string* name, std::string* class_name) override;
+#endif
 
  private:
   // Callback for when DevToolsSaveToFile has completed.
@@ -117,11 +131,6 @@ class CommonWebContentsDelegate
   // Maps url to file path, used by the file requests sent from devtools.
   typedef std::map<std::string, base::FilePath> PathsMap;
   PathsMap saved_files_;
-
-  // Maps file system id to file path, used by the file system requests
-  // sent from devtools.
-  typedef std::map<std::string, base::FilePath> WorkspaceMap;
-  WorkspaceMap saved_paths_;
 
   DISALLOW_COPY_AND_ASSIGN(CommonWebContentsDelegate);
 };

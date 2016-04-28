@@ -27,10 +27,10 @@
 #include "third_party/WebKit/public/web/WebFrame.h"
 #include "third_party/WebKit/public/web/WebLocalFrame.h"
 #include "third_party/WebKit/public/web/WebKit.h"
-#include "third_party/WebKit/public/web/WebScopedUserGesture.h"
 #include "third_party/WebKit/public/web/WebScriptSource.h"
 #include "third_party/WebKit/public/web/WebView.h"
 #include "ui/base/resource/resource_bundle.h"
+#include "native_mate/dictionary.h"
 
 namespace atom {
 
@@ -40,7 +40,11 @@ bool GetIPCObject(v8::Isolate* isolate,
                   v8::Local<v8::Context> context,
                   v8::Local<v8::Object>* ipc) {
   v8::Local<v8::String> key = mate::StringToV8(isolate, "ipc");
-  v8::Local<v8::Value> value = context->Global()->GetHiddenValue(key);
+  v8::Local<v8::Private> privateKey = v8::Private::ForApi(isolate, key);
+  v8::Local<v8::Object> global_object = context->Global();
+  v8::Local<v8::Value> value;
+  if (!global_object->GetPrivate(context, privateKey).ToLocal(&value))
+    return false;
   if (value.IsEmpty() || !value->IsObject())
     return false;
   *ipc = value->ToObject();
@@ -85,9 +89,12 @@ void AtomRenderViewObserver::DidCreateDocumentElement(
     blink::WebLocalFrame* frame) {
   document_created_ = true;
 
+  // Make sure every page will get a script context created.
+  frame->executeScript(blink::WebScriptSource("void 0"));
+
   // Read --zoom-factor from command line.
   std::string zoom_factor_str = base::CommandLine::ForCurrentProcess()->
-      GetSwitchValueASCII(switches::kZoomFactor);;
+      GetSwitchValueASCII(switches::kZoomFactor);
   if (zoom_factor_str.empty())
     return;
   double zoom_factor;
@@ -114,8 +121,6 @@ bool AtomRenderViewObserver::OnMessageReceived(const IPC::Message& message) {
   bool handled = true;
   IPC_BEGIN_MESSAGE_MAP(AtomRenderViewObserver, message)
     IPC_MESSAGE_HANDLER(AtomViewMsg_Message, OnBrowserMessage)
-    IPC_MESSAGE_HANDLER(AtomViewMsg_ExecuteJavaScript,
-                        OnJavaScriptExecuteRequest)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
 
@@ -142,26 +147,13 @@ void AtomRenderViewObserver::OnBrowserMessage(const base::string16& channel,
 
   v8::Local<v8::Object> ipc;
   if (GetIPCObject(isolate, context, &ipc)) {
-    mate::EmitEvent(isolate, ipc, channel, ListValueToVector(isolate, args));
+    auto args_vector = ListValueToVector(isolate, args);
+    // Insert the Event object, event.sender is ipc.
+    mate::Dictionary event = mate::Dictionary::CreateEmpty(isolate);
+    event.Set("sender", ipc);
+    args_vector.insert(args_vector.begin(), event.GetHandle());
+    mate::EmitEvent(isolate, ipc, channel, args_vector);
   }
-}
-
-void AtomRenderViewObserver::OnJavaScriptExecuteRequest(
-    const base::string16& code, bool has_user_gesture) {
-  if (!document_created_)
-    return;
-
-  if (!render_view()->GetWebView())
-    return;
-
-  scoped_ptr<blink::WebScopedUserGesture> gesture(
-      has_user_gesture ? new blink::WebScopedUserGesture : nullptr);
-
-  v8::Isolate* isolate = blink::mainThreadIsolate();
-  v8::HandleScope handle_scope(isolate);
-
-  blink::WebFrame* frame = render_view()->GetWebView()->mainFrame();
-  frame->executeScriptAndReturnValue(blink::WebScriptSource(code));
 }
 
 }  // namespace atom

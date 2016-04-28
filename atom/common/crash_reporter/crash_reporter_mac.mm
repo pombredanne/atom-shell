@@ -48,7 +48,8 @@ void CrashReporterMac::InitBreakpad(const std::string& product_name,
       if (crashpad_client.StartHandler(handler_path, database_path,
                                        submit_url,
                                        StringMap(),
-                                       std::vector<std::string>())) {
+                                       std::vector<std::string>(),
+                                       true)) {
         crashpad_client.UseHandler();
       }
     }  // @autoreleasepool
@@ -126,7 +127,7 @@ CrashReporterMac::GetUploadedReports(const std::string& path) {
 
 // static
 CrashReporterMac* CrashReporterMac::GetInstance() {
-  return Singleton<CrashReporterMac>::get();
+  return base::Singleton<CrashReporterMac>::get();
 }
 
 // static

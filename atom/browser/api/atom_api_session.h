@@ -20,6 +20,11 @@ class FilePath;
 
 namespace mate {
 class Arguments;
+class Dictionary;
+}
+
+namespace net {
+class ProxyConfig;
 }
 
 namespace atom {
@@ -33,6 +38,11 @@ class Session: public mate::TrackableObject<Session>,
  public:
   using ResolveProxyCallback = base::Callback<void(std::string)>;
 
+  enum class CacheAction {
+    CLEAR,
+    STATS,
+  };
+
   // Gets or creates Session from the |browser_context|.
   static mate::Handle<Session> CreateFrom(
       v8::Isolate* isolate, AtomBrowserContext* browser_context);
@@ -43,32 +53,41 @@ class Session: public mate::TrackableObject<Session>,
 
   AtomBrowserContext* browser_context() const { return browser_context_.get(); }
 
+  // mate::TrackableObject:
+  static void BuildPrototype(v8::Isolate* isolate,
+                             v8::Local<v8::ObjectTemplate> prototype);
+
  protected:
-  explicit Session(AtomBrowserContext* browser_context);
+  Session(v8::Isolate* isolate, AtomBrowserContext* browser_context);
   ~Session();
 
   // content::DownloadManager::Observer:
   void OnDownloadCreated(content::DownloadManager* manager,
                          content::DownloadItem* item) override;
 
-  // mate::Wrappable:
-  mate::ObjectTemplateBuilder GetObjectTemplateBuilder(
-      v8::Isolate* isolate) override;
-  bool IsDestroyed() const override;
-
  private:
-  // mate::TrackableObject:
-  void Destroy() override;
-
   void ResolveProxy(const GURL& url, ResolveProxyCallback callback);
-  void ClearCache(const net::CompletionCallback& callback);
+  template<CacheAction action>
+  void DoCacheAction(const net::CompletionCallback& callback);
   void ClearStorageData(mate::Arguments* args);
-  void SetProxy(const std::string& proxy, const base::Closure& callback);
+  void FlushStorageData();
+  void SetProxy(const net::ProxyConfig& config, const base::Closure& callback);
   void SetDownloadPath(const base::FilePath& path);
+  void EnableNetworkEmulation(const mate::Dictionary& options);
+  void DisableNetworkEmulation();
+  void SetCertVerifyProc(v8::Local<v8::Value> proc, mate::Arguments* args);
+  void SetPermissionRequestHandler(v8::Local<v8::Value> val,
+                                   mate::Arguments* args);
+  void ClearHostResolverCache(mate::Arguments* args);
   v8::Local<v8::Value> Cookies(v8::Isolate* isolate);
+  v8::Local<v8::Value> WebRequest(v8::Isolate* isolate);
 
-  // Cached object for cookies API.
+  // Cached object.
   v8::Global<v8::Value> cookies_;
+  v8::Global<v8::Value> web_request_;
+
+  // The X-DevTools-Emulate-Network-Conditions-Client-Id.
+  std::string devtools_network_emulation_client_id_;
 
   scoped_refptr<AtomBrowserContext> browser_context_;
 

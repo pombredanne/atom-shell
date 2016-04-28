@@ -14,6 +14,7 @@
 #include "atom/common/node_includes.h"
 #include "base/command_line.h"
 #include "base/base_paths.h"
+#include "base/environment.h"
 #include "base/files/file_path.h"
 #include "base/message_loop/message_loop.h"
 #include "base/path_service.h"
@@ -34,12 +35,16 @@ REFERENCE_MODULE(atom_browser_app);
 REFERENCE_MODULE(atom_browser_auto_updater);
 REFERENCE_MODULE(atom_browser_content_tracing);
 REFERENCE_MODULE(atom_browser_dialog);
+REFERENCE_MODULE(atom_browser_debugger);
+REFERENCE_MODULE(atom_browser_desktop_capturer);
+REFERENCE_MODULE(atom_browser_download_item);
 REFERENCE_MODULE(atom_browser_menu);
 REFERENCE_MODULE(atom_browser_power_monitor);
 REFERENCE_MODULE(atom_browser_power_save_blocker);
 REFERENCE_MODULE(atom_browser_protocol);
 REFERENCE_MODULE(atom_browser_global_shortcut);
 REFERENCE_MODULE(atom_browser_session);
+REFERENCE_MODULE(atom_browser_system_preferences);
 REFERENCE_MODULE(atom_browser_tray);
 REFERENCE_MODULE(atom_browser_web_contents);
 REFERENCE_MODULE(atom_browser_web_view_manager);
@@ -47,6 +52,7 @@ REFERENCE_MODULE(atom_browser_window);
 REFERENCE_MODULE(atom_common_asar);
 REFERENCE_MODULE(atom_common_clipboard);
 REFERENCE_MODULE(atom_common_crash_reporter);
+REFERENCE_MODULE(atom_common_id_weak_map);
 REFERENCE_MODULE(atom_common_native_image);
 REFERENCE_MODULE(atom_common_screen);
 REFERENCE_MODULE(atom_common_shell);
@@ -80,7 +86,7 @@ scoped_ptr<const char*[]> StringVectorToArgArray(
   for (size_t i = 0; i < vector.size(); ++i) {
     array[i] = vector[i].c_str();
   }
-  return array.Pass();
+  return array;
 }
 
 base::FilePath GetResourcesPath(bool is_browser) {
@@ -100,8 +106,6 @@ base::FilePath GetResourcesPath(bool is_browser) {
 }
 
 }  // namespace
-
-node::Environment* global_env = nullptr;
 
 NodeBindings::NodeBindings(bool is_browser)
     : is_browser_(is_browser),
@@ -139,6 +143,14 @@ void NodeBindings::Initialize() {
   // Init node.
   // (we assume node::Init would not modify the parameters under embedded mode).
   node::Init(nullptr, nullptr, nullptr, nullptr);
+
+#if defined(OS_WIN)
+  // uv_init overrides error mode to suppress the default crash dialog, bring
+  // it back if user wants to show it.
+  scoped_ptr<base::Environment> env(base::Environment::Create());
+  if (env->HasVar("ELECTRON_DEFAULT_ERROR_MODE"))
+    SetErrorMode(0);
+#endif
 }
 
 node::Environment* NodeBindings::CreateEnvironment(
@@ -150,9 +162,8 @@ node::Environment* NodeBindings::CreateEnvironment(
       FILE_PATH_LITERAL("browser") : FILE_PATH_LITERAL("renderer");
   base::FilePath resources_path = GetResourcesPath(is_browser_);
   base::FilePath script_path =
-      resources_path.Append(FILE_PATH_LITERAL("atom.asar"))
+      resources_path.Append(FILE_PATH_LITERAL("electron.asar"))
                     .Append(process_type)
-                    .Append(FILE_PATH_LITERAL("lib"))
                     .Append(FILE_PATH_LITERAL("init.js"));
   std::string script_path_str = script_path.AsUTF8Unsafe();
   args.insert(args.begin() + 1, script_path_str.c_str());
@@ -165,6 +176,9 @@ node::Environment* NodeBindings::CreateEnvironment(
   mate::Dictionary process(context->GetIsolate(), env->process_object());
   process.Set("type", process_type);
   process.Set("resourcesPath", resources_path);
+  // Do not set DOM globals for renderer process.
+  if (!is_browser_)
+    process.Set("_noBrowserGlobals", resources_path);
   // The path to helper app.
   base::FilePath helper_exec_path;
   PathService::Get(content::CHILD_PROCESS_EXE, &helper_exec_path);
@@ -202,10 +216,8 @@ void NodeBindings::RunMessageLoop() {
 void NodeBindings::UvRunOnce() {
   DCHECK(!is_browser_ || BrowserThread::CurrentlyOn(BrowserThread::UI));
 
-  // By default the global env would be used unless user specified another one
-  // (this happens for renderer process, which wraps the uv loop with web page
-  // context).
-  node::Environment* env = uv_env() ? uv_env() : global_env;
+  node::Environment* env = uv_env();
+  CHECK(env);
 
   // Use Locker in browser process.
   mate::Locker locker(env->isolate());
@@ -216,7 +228,7 @@ void NodeBindings::UvRunOnce() {
 
   // Perform microtask checkpoint after running JavaScript.
   scoped_ptr<blink::WebScopedRunV8Script> script_scope(
-      is_browser_ ? nullptr : new blink::WebScopedRunV8Script(env->isolate()));
+      is_browser_ ? nullptr : new blink::WebScopedRunV8Script);
 
   // Deal with uv events.
   int r = uv_run(uv_loop_, UV_RUN_NOWAIT);

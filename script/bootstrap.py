@@ -39,9 +39,11 @@ def main():
   update_submodules()
   setup_python_libs()
   update_node_modules('.')
-  bootstrap_brightray(args.dev, args.url, args.target_arch)
+  bootstrap_brightray(args.dev, args.url, args.target_arch,
+                      args.libcc_source_path, args.libcc_shared_library_path,
+                      args.libcc_static_library_path)
 
-  if args.target_arch in ['arm', 'ia32'] and PLATFORM == 'linux':
+  if PLATFORM == 'linux':
     download_sysroot(args.target_arch)
 
   create_chrome_version_h()
@@ -69,6 +71,14 @@ def parse_args():
                            'prompts.')
   parser.add_argument('--target_arch', default=get_target_arch(),
                       help='Manually specify the arch to build for')
+  parser.add_argument('--libcc_source_path', required=False,
+                      help='The source path of libchromiumcontent. ' \
+                           'NOTE: All options of libchromiumcontent are ' \
+                           'required OR let electron choose it')
+  parser.add_argument('--libcc_shared_library_path', required=False,
+                      help='The shared library path of libchromiumcontent.')
+  parser.add_argument('--libcc_static_library_path', required=False,
+                      help='The static library path of libchromiumcontent.')
   return parser.parse_args()
 
 
@@ -91,15 +101,23 @@ def setup_python_libs():
       execute_stdout([sys.executable, 'setup.py', 'build'])
 
 
-def bootstrap_brightray(is_dev, url, target_arch):
+def bootstrap_brightray(is_dev, url, target_arch, libcc_source_path,
+                        libcc_shared_library_path,
+                        libcc_static_library_path):
   bootstrap = os.path.join(VENDOR_DIR, 'brightray', 'script', 'bootstrap')
   args = [
     '--commit', LIBCHROMIUMCONTENT_COMMIT,
     '--target_arch', target_arch,
-    url,
+    url
   ]
   if is_dev:
     args = ['--dev'] + args
+  if (libcc_source_path != None and
+      libcc_shared_library_path != None and
+      libcc_static_library_path != None):
+    args += ['--libcc_source_path', libcc_source_path,
+             '--libcc_shared_library_path', libcc_shared_library_path,
+             '--libcc_static_library_path', libcc_static_library_path]
   execute_stdout([sys.executable, bootstrap] + args)
 
 
@@ -148,9 +166,11 @@ def update_clang():
 def download_sysroot(target_arch):
   if target_arch == 'ia32':
     target_arch = 'i386'
-  execute_stdout([os.path.join(SOURCE_ROOT, 'script', 'install-sysroot.py'),
+  if target_arch == 'x64':
+    target_arch = 'amd64'
+  execute_stdout([sys.executable,
+                  os.path.join(SOURCE_ROOT, 'script', 'install-sysroot.py'),
                   '--arch', target_arch])
-
 
 def create_chrome_version_h():
   version_file = os.path.join(SOURCE_ROOT, 'vendor', 'brightray', 'vendor',
@@ -178,7 +198,7 @@ def create_chrome_version_h():
 def touch_config_gypi():
   config_gypi = os.path.join(SOURCE_ROOT, 'vendor', 'node', 'config.gypi')
   with open(config_gypi, 'w+') as f:
-    content = '\n{}'
+    content = "\n{'variables':{}}"
     if f.read() != content:
       f.write(content)
 

@@ -41,15 +41,17 @@ std::vector<std::string> MetricsToArray(uint32_t metrics) {
   if (metrics & gfx::DisplayObserver::DISPLAY_METRIC_DEVICE_SCALE_FACTOR)
     array.push_back("scaleFactor");
   if (metrics & gfx::DisplayObserver::DISPLAY_METRIC_ROTATION)
-    array.push_back("rotaion");
+    array.push_back("rotation");
   return array;
 }
 
 }  // namespace
 
-Screen::Screen(gfx::Screen* screen) : screen_(screen) {
+Screen::Screen(v8::Isolate* isolate, gfx::Screen* screen)
+    : screen_(screen) {
   displays_ = screen_->GetAllDisplays();
   screen_->AddObserver(this);
+  Init(isolate);
 }
 
 Screen::~Screen() {
@@ -100,16 +102,6 @@ void Screen::OnDisplayMetricsChanged(const gfx::Display& display,
   Emit("display-metrics-changed", display, MetricsToArray(changed_metrics));
 }
 
-mate::ObjectTemplateBuilder Screen::GetObjectTemplateBuilder(
-    v8::Isolate* isolate) {
-  return mate::ObjectTemplateBuilder(isolate)
-      .SetMethod("getCursorScreenPoint", &Screen::GetCursorScreenPoint)
-      .SetMethod("getPrimaryDisplay", &Screen::GetPrimaryDisplay)
-      .SetMethod("getAllDisplays", &Screen::GetAllDisplays)
-      .SetMethod("getDisplayNearestPoint", &Screen::GetDisplayNearestPoint)
-      .SetMethod("getDisplayMatching", &Screen::GetDisplayMatching);
-}
-
 // static
 v8::Local<v8::Value> Screen::Create(v8::Isolate* isolate) {
   if (!Browser::Get()->is_ready()) {
@@ -126,7 +118,18 @@ v8::Local<v8::Value> Screen::Create(v8::Isolate* isolate) {
     return v8::Null(isolate);
   }
 
-  return mate::CreateHandle(isolate, new Screen(screen)).ToV8();
+  return mate::CreateHandle(isolate, new Screen(isolate, screen)).ToV8();
+}
+
+// static
+void Screen::BuildPrototype(
+    v8::Isolate* isolate, v8::Local<v8::ObjectTemplate> prototype) {
+  mate::ObjectTemplateBuilder(isolate, prototype)
+      .SetMethod("getCursorScreenPoint", &Screen::GetCursorScreenPoint)
+      .SetMethod("getPrimaryDisplay", &Screen::GetPrimaryDisplay)
+      .SetMethod("getAllDisplays", &Screen::GetAllDisplays)
+      .SetMethod("getDisplayNearestPoint", &Screen::GetDisplayNearestPoint)
+      .SetMethod("getDisplayMatching", &Screen::GetDisplayMatching);
 }
 
 }  // namespace api

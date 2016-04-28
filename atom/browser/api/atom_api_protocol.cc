@@ -12,65 +12,31 @@
 #include "atom/browser/net/url_request_fetch_job.h"
 #include "atom/browser/net/url_request_string_job.h"
 #include "atom/common/native_mate_converters/callback.h"
+#include "atom/common/native_mate_converters/net_converter.h"
 #include "atom/common/node_includes.h"
 #include "native_mate/dictionary.h"
 
 using content::BrowserThread;
 
-namespace mate {
-
-template<>
-struct Converter<const net::URLRequest*> {
-  static v8::Local<v8::Value> ToV8(v8::Isolate* isolate,
-                                   const net::URLRequest* val) {
-    return mate::ObjectTemplateBuilder(isolate)
-        .SetValue("method", val->method())
-        .SetValue("url", val->url().spec())
-        .SetValue("referrer", val->referrer())
-        .Build()->NewInstance();
-  }
-};
-
-}  // namespace mate
-
 namespace atom {
 
 namespace api {
 
-Protocol::Protocol(AtomBrowserContext* browser_context)
+Protocol::Protocol(v8::Isolate* isolate, AtomBrowserContext* browser_context)
     : request_context_getter_(browser_context->GetRequestContext()),
       job_factory_(browser_context->job_factory()) {
   CHECK(job_factory_);
-}
-
-mate::ObjectTemplateBuilder Protocol::GetObjectTemplateBuilder(
-    v8::Isolate* isolate) {
-  return mate::ObjectTemplateBuilder(isolate)
-      .SetMethod("registerStandardSchemes", &Protocol::RegisterStandardSchemes)
-      .SetMethod("registerStringProtocol",
-                 &Protocol::RegisterProtocol<URLRequestStringJob>)
-      .SetMethod("registerBufferProtocol",
-                 &Protocol::RegisterProtocol<URLRequestBufferJob>)
-      .SetMethod("registerFileProtocol",
-                 &Protocol::RegisterProtocol<UrlRequestAsyncAsarJob>)
-      .SetMethod("registerHttpProtocol",
-                 &Protocol::RegisterProtocol<URLRequestFetchJob>)
-      .SetMethod("unregisterProtocol", &Protocol::UnregisterProtocol)
-      .SetMethod("isProtocolHandled", &Protocol::IsProtocolHandled)
-      .SetMethod("interceptStringProtocol",
-                 &Protocol::InterceptProtocol<URLRequestStringJob>)
-      .SetMethod("interceptBufferProtocol",
-                 &Protocol::InterceptProtocol<URLRequestBufferJob>)
-      .SetMethod("interceptFileProtocol",
-                 &Protocol::InterceptProtocol<UrlRequestAsyncAsarJob>)
-      .SetMethod("interceptHttpProtocol",
-                 &Protocol::InterceptProtocol<URLRequestFetchJob>)
-      .SetMethod("uninterceptProtocol", &Protocol::UninterceptProtocol);
+  Init(isolate);
 }
 
 void Protocol::RegisterStandardSchemes(
     const std::vector<std::string>& schemes) {
   atom::AtomBrowserClient::SetCustomSchemes(schemes);
+}
+
+void Protocol::RegisterServiceWorkerSchemes(
+    const std::vector<std::string>& schemes) {
+  atom::AtomBrowserClient::SetCustomServiceWorkerSchemes(schemes);
 }
 
 void Protocol::UnregisterProtocol(
@@ -158,7 +124,35 @@ std::string Protocol::ErrorCodeToString(ProtocolError error) {
 // static
 mate::Handle<Protocol> Protocol::Create(
     v8::Isolate* isolate, AtomBrowserContext* browser_context) {
-  return mate::CreateHandle(isolate, new Protocol(browser_context));
+  return mate::CreateHandle(isolate, new Protocol(isolate, browser_context));
+}
+
+// static
+void Protocol::BuildPrototype(
+    v8::Isolate* isolate, v8::Local<v8::ObjectTemplate> prototype) {
+  mate::ObjectTemplateBuilder(isolate, prototype)
+      .SetMethod("registerStandardSchemes", &Protocol::RegisterStandardSchemes)
+      .SetMethod("registerServiceWorkerSchemes",
+                 &Protocol::RegisterServiceWorkerSchemes)
+      .SetMethod("registerStringProtocol",
+                 &Protocol::RegisterProtocol<URLRequestStringJob>)
+      .SetMethod("registerBufferProtocol",
+                 &Protocol::RegisterProtocol<URLRequestBufferJob>)
+      .SetMethod("registerFileProtocol",
+                 &Protocol::RegisterProtocol<URLRequestAsyncAsarJob>)
+      .SetMethod("registerHttpProtocol",
+                 &Protocol::RegisterProtocol<URLRequestFetchJob>)
+      .SetMethod("unregisterProtocol", &Protocol::UnregisterProtocol)
+      .SetMethod("isProtocolHandled", &Protocol::IsProtocolHandled)
+      .SetMethod("interceptStringProtocol",
+                 &Protocol::InterceptProtocol<URLRequestStringJob>)
+      .SetMethod("interceptBufferProtocol",
+                 &Protocol::InterceptProtocol<URLRequestBufferJob>)
+      .SetMethod("interceptFileProtocol",
+                 &Protocol::InterceptProtocol<URLRequestAsyncAsarJob>)
+      .SetMethod("interceptHttpProtocol",
+                 &Protocol::InterceptProtocol<URLRequestFetchJob>)
+      .SetMethod("uninterceptProtocol", &Protocol::UninterceptProtocol);
 }
 
 }  // namespace api

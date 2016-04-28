@@ -19,7 +19,7 @@ namespace atom {
 
 namespace api {
 
-Menu::Menu()
+Menu::Menu(v8::Isolate* isolate)
     : model_(new AtomMenuModel(this)),
       parent_(NULL) {
 }
@@ -28,7 +28,7 @@ Menu::~Menu() {
 }
 
 void Menu::AfterInit(v8::Isolate* isolate) {
-  mate::Dictionary wrappable(isolate, GetWrapper(isolate));
+  mate::Dictionary wrappable(isolate, GetWrapper());
   mate::Dictionary delegate;
   if (!wrappable.Get("delegate", &delegate))
     return;
@@ -151,6 +151,7 @@ bool Menu::IsVisibleAt(int index) const {
 void Menu::BuildPrototype(v8::Isolate* isolate,
                           v8::Local<v8::ObjectTemplate> prototype) {
   mate::ObjectTemplateBuilder(isolate, prototype)
+      .MakeDestroyable()
       .SetMethod("insertItem", &Menu::InsertItemAt)
       .SetMethod("insertCheckItem", &Menu::InsertCheckItemAt)
       .SetMethod("insertRadioItem", &Menu::InsertRadioItemAt)
@@ -168,8 +169,7 @@ void Menu::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("isItemCheckedAt", &Menu::IsItemCheckedAt)
       .SetMethod("isEnabledAt", &Menu::IsEnabledAt)
       .SetMethod("isVisibleAt", &Menu::IsVisibleAt)
-      .SetMethod("_popup", &Menu::Popup)
-      .SetMethod("_popupAt", &Menu::PopupAt);
+      .SetMethod("popupAt", &Menu::PopupAt);
 }
 
 }  // namespace api

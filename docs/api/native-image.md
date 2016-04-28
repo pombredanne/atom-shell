@@ -1,7 +1,9 @@
-# NativeImage
+# nativeImage
+
+> Create tray, dock, and application icons using PNG or JPG files.
 
 In Electron, for the APIs that take images, you can pass either file paths or
-`NativeImage` instances. An empty image will be used when `null` is passed.
+`nativeImage` instances. An empty image will be used when `null` is passed.
 
 For example, when creating a tray or setting a window's icon, you can pass an
 image file path as a `String`:
@@ -11,10 +13,9 @@ var appIcon = new Tray('/Users/somebody/images/icon.png');
 var window = new BrowserWindow({icon: '/Users/somebody/images/window.png'});
 ```
 
-Or read the image from the clipboard which returns a `NativeImage`:
+Or read the image from the clipboard which returns a `nativeImage`:
 
 ```javascript
-var clipboard = require('clipboard');
 var image = clipboard.readImage();
 var appIcon = new Tray(image);
 ```
@@ -84,40 +85,40 @@ To mark an image as a template image, its filename should end with the word
 
 ## Methods
 
-The `NativeImage` class has the following methods:
+The `nativeImage` class has the following methods:
 
-### `NativeImage.createEmpty()`
+### `nativeImage.createEmpty()`
 
-Creates an empty `NativeImage` instance.
+Creates an empty `nativeImage` instance.
 
-### `NativeImage.createFromPath(path)`
+### `nativeImage.createFromPath(path)`
 
 * `path` String
 
-Creates a new `NativeImage` instance from a file located at `path`.
+Creates a new `nativeImage` instance from a file located at `path`.
 
-### `NativeImage.createFromBuffer(buffer[, scaleFactor])`
+### `nativeImage.createFromBuffer(buffer[, scaleFactor])`
 
 * `buffer` [Buffer][buffer]
 * `scaleFactor` Double (optional)
 
-Creates a new `NativeImage` instance from `buffer`. The default `scaleFactor` is
+Creates a new `nativeImage` instance from `buffer`. The default `scaleFactor` is
 1.0.
 
-### `NativeImage.createFromDataUrl(dataUrl)`
+### `nativeImage.createFromDataURL(dataURL)`
 
-* `dataUrl` String
+* `dataURL` String
 
-Creates a new `NativeImage` instance from `dataUrl`.
+Creates a new `nativeImage` instance from `dataURL`.
 
 ## Instance Methods
 
 The following methods are available on instances of `nativeImage`:
 
 ```javascript
-var NativeImage = require('native-image');
+const nativeImage = require('electron').nativeImage;
 
-var image = NativeImage.createFromPath('/Users/somebody/images/icon.png');
+var image = nativeImage.createFromPath('/Users/somebody/images/icon.png');
 ```
 
 ### `image.toPng()`
@@ -126,13 +127,22 @@ Returns a [Buffer][buffer] that contains the image's `PNG` encoded data.
 
 ### `image.toJpeg(quality)`
 
-* `quality` Integer between 0 - 100 (**required**)
+* `quality` Integer (**required**) - Between 0 - 100.
 
 Returns a [Buffer][buffer] that contains the image's `JPEG` encoded data.
 
-### `image.toDataUrl()`
+### `image.toDataURL()`
 
 Returns the data URL of the image.
+
+### `image.getNativeHandle()` _OS X_
+
+Returns a [Buffer][buffer] that stores C pointer to underlying native handle of
+the image. On OS X, a pointer to `NSImage` instance would be returned.
+
+Notice that the returned pointer is a weak pointer to the underlying native
+image instead of a copy, so you _must_ ensure that the associated
+`nativeImage` instance is kept around.
 
 ### `image.isEmpty()`
 
@@ -142,7 +152,7 @@ Returns a boolean whether the image is empty.
 
 Returns the size of the image.
 
-[buffer]: https://iojs.org/api/buffer.html#buffer_class_buffer
+[buffer]: https://nodejs.org/api/buffer.html#buffer_class_buffer
 
 ### `image.setTemplateImage(option)`
 

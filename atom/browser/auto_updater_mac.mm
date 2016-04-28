@@ -12,9 +12,6 @@
 #include "base/bind.h"
 #include "base/time/time.h"
 #include "base/strings/sys_string_conversions.h"
-#include "atom/browser/auto_updater_delegate.h"
-
-#include <iostream>
 
 namespace auto_updater {
 
@@ -23,20 +20,18 @@ namespace {
 // The gloal SQRLUpdater object.
 SQRLUpdater* g_updater = nil;
 
-void RelaunchToInstallUpdate() {
-  [[g_updater relaunchToInstallUpdate] subscribeError:^(NSError* error) {
-    AutoUpdaterDelegate* delegate = AutoUpdater::GetDelegate();
-    if (delegate)
-      delegate->OnError(base::SysNSStringToUTF8(error.localizedDescription));
-  }];
-}
-
 }  // namespace
+
+namespace {
+
+bool g_update_available = false;
+
+}
 
 // static
 void AutoUpdater::SetFeedURL(const std::string& feed) {
   if (g_updater == nil) {
-    AutoUpdaterDelegate* delegate = GetDelegate();
+    Delegate* delegate = GetDelegate();
     if (!delegate)
       return;
 
@@ -67,7 +62,7 @@ void AutoUpdater::SetFeedURL(const std::string& feed) {
 
 // static
 void AutoUpdater::CheckForUpdates() {
-  AutoUpdaterDelegate* delegate = GetDelegate();
+  Delegate* delegate = GetDelegate();
   if (!delegate)
     return;
 
@@ -80,15 +75,16 @@ void AutoUpdater::CheckForUpdates() {
       take:1]
       subscribeNext:^(SQRLDownloadedUpdate *downloadedUpdate) {
         if (downloadedUpdate) {
+          g_update_available = true;
           SQRLUpdate* update = downloadedUpdate.update;
           // There is a new update that has been downloaded.
           delegate->OnUpdateDownloaded(
             base::SysNSStringToUTF8(update.releaseNotes),
             base::SysNSStringToUTF8(update.releaseName),
             base::Time::FromDoubleT(update.releaseDate.timeIntervalSince1970),
-            base::SysNSStringToUTF8(update.updateURL.absoluteString),
-            base::Bind(RelaunchToInstallUpdate));
+            base::SysNSStringToUTF8(update.updateURL.absoluteString));
         } else {
+          g_update_available = false;
           // When the completed event is sent with no update, then we know there
           // is no update available.
           delegate->OnUpdateNotAvailable();
@@ -98,6 +94,19 @@ void AutoUpdater::CheckForUpdates() {
             [NSString stringWithFormat:@"%@: %@",
                 error.localizedDescription, error.localizedFailureReason]));
       }];
+}
+
+void AutoUpdater::QuitAndInstall() {
+  Delegate* delegate = AutoUpdater::GetDelegate();
+  if (g_update_available) {
+    [[g_updater relaunchToInstallUpdate] subscribeError:^(NSError* error) {
+      if (delegate)
+        delegate->OnError(base::SysNSStringToUTF8(error.localizedDescription));
+    }];
+  } else {
+    if (delegate)
+      delegate->OnError("No update available, can't quit and install");
+  }
 }
 
 }  // namespace auto_updater

@@ -1,19 +1,18 @@
 # webFrame
 
-The `web-frame` module allows you to customize the rendering of the current
-web page.
+> Customize the rendering of the current web page.
 
 An example of zooming current page to 200%.
 
 ```javascript
-var webFrame = require('web-frame');
+var webFrame = require('electron').webFrame;
 
 webFrame.setZoomFactor(2);
 ```
 
 ## Methods
 
-The `web-frame` module has the following methods:
+The `webFrame` module has the following methods:
 
 ### `webFrame.setZoomFactor(factor)`
 
@@ -59,14 +58,14 @@ whether the word passed is correctly spelled.
 An example of using [node-spellchecker][spellchecker] as provider:
 
 ```javascript
-require('web-frame').setSpellCheckProvider("en-US", true, {
+webFrame.setSpellCheckProvider("en-US", true, {
   spellCheck: function(text) {
     return !(require('spellchecker').isMisspelled(text));
   }
 });
 ```
 
-### `webFrame.registerUrlSchemeAsSecure(scheme)`
+### `webFrame.registerURLSchemeAsSecure(scheme)`
 
 * `scheme` String
 
@@ -76,11 +75,35 @@ Secure schemes do not trigger mixed content warnings. For example, `https` and
 `data` are secure schemes because they cannot be corrupted by active network
 attackers.
 
-### `webFrame.registerUrlSchemeAsBypassingCsp(scheme)`
+### `webFrame.registerURLSchemeAsBypassingCSP(scheme)`
 
 * `scheme` String
 
 Resources will be loaded from this `scheme` regardless of the current page's
 Content Security Policy.
+
+### `webFrame.registerURLSchemeAsPrivileged(scheme)`
+
+* `scheme` String
+
+Registers the `scheme` as secure, bypasses content security policy for resources,
+allows registering ServiceWorker and supports fetch API.
+
+### `webFrame.insertText(text)`
+
+* `text` String
+
+Inserts `text` to the focused element.
+
+### `webFrame.executeJavaScript(code[, userGesture])`
+
+* `code` String
+* `userGesture` Boolean (optional) - Default is `false`.
+
+Evaluates `code` in page.
+
+In the browser window some HTML APIs like `requestFullScreen` can only be
+invoked by a gesture from the user. Setting `userGesture` to `true` will remove
+this limitation.
 
 [spellchecker]: https://github.com/atom/node-spellchecker

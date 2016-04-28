@@ -25,10 +25,11 @@ class ScopedTemporaryFile;
 class Archive {
  public:
   struct FileInfo {
-    FileInfo() : size(0), offset(0) {}
+    FileInfo() : unpacked(false), executable(false), size(0), offset(0) {}
     bool unpacked;
-    uint32 size;
-    uint64 offset;
+    bool executable;
+    uint32_t size;
+    uint64_t offset;
   };
 
   struct Stats : public FileInfo {
@@ -69,7 +70,8 @@ class Archive {
  private:
   base::FilePath path_;
   base::File file_;
-  uint32 header_size_;
+  int fd_;
+  uint32_t header_size_;
   scoped_ptr<base::DictionaryValue> header_;
 
   // Cached external temporary files.

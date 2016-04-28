@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <string>
+#include <iostream>
 
 #include "atom/common/atom_version.h"
 #include "atom/common/chrome_version.h"
@@ -40,7 +41,7 @@ void FatalErrorCallback(const char* location, const char* message) {
 }
 
 void Log(const base::string16& message) {
-  logging::LogMessage("CONSOLE", 0, 0).stream() << message;
+  std::cout << message << std::flush;
 }
 
 }  // namespace
@@ -68,8 +69,9 @@ void AtomBindings::BindTo(v8::Isolate* isolate,
   dict.SetMethod("activateUvLoop",
       base::Bind(&AtomBindings::ActivateUVLoop, base::Unretained(this)));
 
-  // Do not warn about deprecated APIs.
-  dict.Set("noDeprecation", true);
+#if defined(MAS_BUILD)
+  dict.Set("mas", true);
+#endif
 
   mate::Dictionary versions;
   if (dict.Get("versions", &versions)) {
@@ -96,24 +98,17 @@ void AtomBindings::OnCallNextTick(uv_async_t* handle) {
            self->pending_next_ticks_.begin();
        it != self->pending_next_ticks_.end(); ++it) {
     node::Environment* env = *it;
+    // KickNextTick, copied from node.cc:
+    node::Environment::AsyncCallbackScope callback_scope(env);
+    if (callback_scope.in_makecallback())
+      continue;
     node::Environment::TickInfo* tick_info = env->tick_info();
-
-    v8::Context::Scope context_scope(env->context());
-    if (tick_info->in_tick())
-      continue;
-
-    if (tick_info->length() == 0) {
+    if (tick_info->length() == 0)
       env->isolate()->RunMicrotasks();
-    }
-
-    if (tick_info->length() == 0) {
+    v8::Local<v8::Object> process = env->process_object();
+    if (tick_info->length() == 0)
       tick_info->set_index(0);
-      continue;
-    }
-
-    tick_info->set_in_tick(true);
-    env->tick_callback_function()->Call(env->process_object(), 0, NULL);
-    tick_info->set_in_tick(false);
+    env->tick_callback_function()->Call(process, 0, nullptr).IsEmpty();
   }
 
   self->pending_next_ticks_.clear();

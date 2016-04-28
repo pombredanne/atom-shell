@@ -32,9 +32,12 @@ Role kRolesMap[] = {
   { @selector(cut:), "cut" },
   { @selector(copy:), "copy" },
   { @selector(paste:), "paste" },
+  { @selector(delete:), "delete" },
+  { @selector(pasteAndMatchStyle:), "paste-and-match-style" },
   { @selector(selectAll:), "selectall" },
   { @selector(performMiniaturize:), "minimize" },
   { @selector(performClose:), "close" },
+  { @selector(performZoom:), "zoom" },
 };
 
 }  // namespace
@@ -148,10 +151,11 @@ Role kRolesMap[] = {
 
     // Set submenu's role.
     base::string16 role = model->GetRoleAt(index);
-    if (role == base::ASCIIToUTF16("window"))
+    if (role == base::ASCIIToUTF16("window") && [submenu numberOfItems])
       [NSApp setWindowsMenu:submenu];
     else if (role == base::ASCIIToUTF16("help"))
       [NSApp setHelpMenu:submenu];
+
     if (role == base::ASCIIToUTF16("services"))
       [NSApp setServicesMenu:submenu];
   } else {
